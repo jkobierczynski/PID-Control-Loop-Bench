@@ -1,0 +1,1426 @@
+<title>PID Control Loop Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F3F5F6; --surface:#FFFFFF; --surface-2:#EAEEF0; --surface-3:#DEE4E7;
+  --border:#D7DEE2; --border-strong:#C3CCD1;
+  --text-primary:#1B2429; --text-secondary:#55666D; --text-muted:#869399;
+  --accent:#0E7C86; --accent-strong:#0A5F67; --accent-soft:#E3F1F2; --accent-ink:#FFFFFF;
+  --status-good:#1F8F55; --status-good-bg:#E4F5EC;
+  --status-bad:#C43D3D; --status-bad-bg:#FBEAEA;
+  --status-warn:#9C6B10; --status-warn-bg:#FBF1DE;
+  --shadow:0 1px 2px rgba(20,30,34,.07),0 6px 16px rgba(20,30,34,.06);
+  --radius:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12181B; --surface:#1B2327; --surface-2:#212B30; --surface-3:#2A363C;
+    --border:#313D42; --border-strong:#42525A;
+    --text-primary:#E7EDEF; --text-secondary:#A8B7BD; --text-muted:#71828A;
+    --accent:#3BC4D1; --accent-strong:#7BDCE6; --accent-soft:#153238; --accent-ink:#06181A;
+    --status-good:#49CE7C; --status-good-bg:#123420;
+    --status-bad:#FF7A6D; --status-bad-bg:#3A1A18;
+    --status-warn:#F0C24C; --status-warn-bg:#332A11;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 6px 18px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12181B; --surface:#1B2327; --surface-2:#212B30; --surface-3:#2A363C;
+  --border:#313D42; --border-strong:#42525A;
+  --text-primary:#E7EDEF; --text-secondary:#A8B7BD; --text-muted:#71828A;
+  --accent:#3BC4D1; --accent-strong:#7BDCE6; --accent-soft:#153238; --accent-ink:#06181A;
+  --status-good:#49CE7C; --status-good-bg:#123420;
+  --status-bad:#FF7A6D; --status-bad-bg:#3A1A18;
+  --status-warn:#F0C24C; --status-warn-bg:#332A11;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 6px 18px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--bg);
+  color:var(--text-primary);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  padding-inline:20px;
+  padding-block:20px 48px;
+}
+.wrap{max-width:1320px;margin:0 auto;}
+
+code,.mono,input.mono,.readout{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;}
+h1,h2,h3{text-wrap:balance;}
+
+/* ---------- header ---------- */
+.topbar{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+.topbar .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+.topbar h1{font-size:26px;font-weight:700;letter-spacing:-.01em;margin:0;}
+.topbar .tagline{color:var(--text-secondary);font-size:13.5px;}
+.topbar .meta{color:var(--text-muted);font-size:12px;}
+
+/* ---------- control bay ---------- */
+.control-bay{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;}
+@media (max-width:900px){.control-bay{grid-template-columns:1fr;}}
+
+.control-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px 16px 16px;
+  box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:10px;
+}
+.control-card .card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.card-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);}
+.card-title .idx{color:var(--accent);margin-right:6px;}
+
+.segmented{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;}
+.segmented button{
+  appearance:none;border:none;background:transparent;color:var(--text-secondary);
+  font:inherit;font-size:12px;font-weight:600;letter-spacing:.02em;padding:5px 10px;border-radius:6px;cursor:pointer;
+}
+.segmented button.active{background:var(--accent);color:var(--accent-ink);}
+.segmented button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+
+.field-row{display:flex;gap:8px;flex-wrap:wrap;}
+.field{display:flex;flex-direction:column;gap:4px;flex:1 1 70px;min-width:64px;}
+.field label{font-size:10.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);}
+.field input[type="number"],.field input[type="text"],select{
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);
+  border-radius:6px;padding:7px 8px;font-size:13.5px;font:inherit;width:100%;
+}
+.field input.mono,select.mono{font-family:"IBM Plex Mono",monospace;}
+input[type="number"]:focus,input[type="text"]:focus,select:focus,button:focus-visible{
+  outline:2px solid var(--accent);outline-offset:1px;
+}
+select{appearance:auto;}
+.eq-field textarea, .eq-field input{width:100%;}
+.eq-readout{
+  background:var(--surface-2);border:1px dashed var(--border-strong);border-radius:6px;
+  padding:8px 10px;font-size:13px;color:var(--accent-strong);overflow-x:auto;white-space:nowrap;
+}
+.hint{font-size:11px;color:var(--text-muted);line-height:1.4;}
+.range-row{display:flex;align-items:center;gap:8px;}
+.range-row input[type="range"]{flex:1;accent-color:var(--accent);}
+.small-btn{
+  appearance:none;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);
+  border-radius:6px;padding:6px 9px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;
+}
+.small-btn:hover{border-color:var(--accent);color:var(--accent-strong);}
+.small-btn.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+
+/* ---------- status strip ---------- */
+.status-strip{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;align-items:center;}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  padding:6px 11px;border-radius:999px;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);
+  font-variant-numeric:tabular-nums;
+}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;}
+.chip.good{background:var(--status-good-bg);color:var(--status-good);border-color:transparent;}
+.chip.bad{background:var(--status-bad-bg);color:var(--status-bad);border-color:transparent;}
+.chip.warn{background:var(--status-warn-bg);color:var(--status-warn);border-color:transparent;}
+.error-banner{
+  display:none;background:var(--status-bad-bg);color:var(--status-bad);border:1px solid var(--status-bad);
+  border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;font-family:"IBM Plex Mono",monospace;
+}
+.error-banner.show{display:block;}
+
+/* ---------- panels grid ---------- */
+.panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media (max-width:760px){.panels-grid{grid-template-columns:1fr;}}
+
+.panel{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;
+}
+.panel.drag-over{outline:2px dashed var(--accent);outline-offset:-2px;}
+.panel-header{
+  display:flex;align-items:center;gap:8px;padding:9px 10px 9px 6px;border-bottom:1px solid var(--border);
+  background:var(--surface-2);cursor:grab;
+}
+.panel-header:active{cursor:grabbing;}
+.drag-handle{color:var(--text-muted);font-size:14px;line-height:1;padding:2px 4px;user-select:none;letter-spacing:1px;}
+.panel-title{font-size:12.5px;font-weight:600;letter-spacing:.03em;flex:1;}
+.panel-title .sub{color:var(--text-muted);font-weight:500;margin-left:6px;font-size:11px;}
+.reorder-btns{display:flex;gap:2px;}
+.reorder-btns button{
+  appearance:none;border:1px solid transparent;background:transparent;color:var(--text-muted);
+  width:22px;height:22px;border-radius:5px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;
+}
+.reorder-btns button:hover{background:var(--surface-3);color:var(--text-primary);}
+.reorder-btns .reset-view{font-size:13px;}
+.panel-body{position:relative;flex:1;min-height:230px;background:#0B1210;}
+.panel-body canvas{display:block;width:100%;height:230px;cursor:grab;touch-action:none;-webkit-user-drag:none;user-select:none;}
+.panel-body canvas.panning{cursor:grabbing;}
+.zoom-hint{
+  position:absolute;right:8px;bottom:6px;font-size:9.5px;letter-spacing:.02em;color:rgba(143,203,184,.55);
+  font-family:"IBM Plex Mono",monospace;pointer-events:none;user-select:none;
+}
+.panel-note{padding:6px 10px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);background:var(--surface);}
+
+footer.notes{margin-top:22px;color:var(--text-muted);font-size:11.5px;line-height:1.6;}
+footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;}
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <h1>PID Control Loop Bench</h1>
+      <span class="tagline">Interactive PID / compensator design against any Laplace plant</span>
+    </div>
+    <span class="meta">Unity negative feedback &middot; L(s) = C(s)&middot;P(s)</span>
+  </div>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="control-bay">
+    <!-- Controller -->
+    <div class="control-card">
+      <div class="card-head">
+        <span class="card-title"><span class="idx">01</span>Controller C(s)</span>
+        <div class="segmented" id="ctrlModeSeg">
+          <button data-mode="pid" class="active">P&middot;I&middot;D</button>
+          <button data-mode="laplace">Laplace</button>
+        </div>
+      </div>
+
+      <div id="ctrlPidFields" class="field-row">
+        <div class="field"><label for="kp">Kp</label><input type="number" id="kp" class="mono" step="0.1" value="2"></div>
+        <div class="field"><label for="ki">Ki</label><input type="number" id="ki" class="mono" step="0.1" value="1"></div>
+        <div class="field"><label for="kd">Kd</label><input type="number" id="kd" class="mono" step="0.1" value="0.5"></div>
+      </div>
+
+      <div id="ctrlLaplaceFields" style="display:none;">
+        <div class="field-row" style="margin-bottom:8px;">
+          <div class="field" style="flex:1 1 100%;">
+            <label for="ctrlPreset">Demonstration presets</label>
+            <select id="ctrlPreset" class="mono"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="ctrlLaplaceInput">C(s) &mdash; numerator/denominator in s</label>
+          <input type="text" id="ctrlLaplaceInput" class="mono" value="(0.5*s^2+2*s+1)/s">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Resulting transfer function</label>
+        <div class="eq-readout" id="ctrlReadout">C(s) = &hellip;</div>
+      </div>
+      <div class="hint">Ideal PID form: C(s) = Kp + Ki/s + Kd&middot;s. Switch to Laplace to type any compensator directly.</div>
+    </div>
+
+    <!-- Plant -->
+    <div class="control-card">
+      <div class="card-head">
+        <span class="card-title"><span class="idx">02</span>Process P(s)</span>
+      </div>
+      <div class="field">
+        <label for="plantPreset">Demonstration presets</label>
+        <select id="plantPreset" class="mono"></select>
+      </div>
+      <div class="field">
+        <label for="plantInput">P(s) &mdash; numerator/denominator in s</label>
+        <input type="text" id="plantInput" class="mono" value="1/(s^2+3*s+2)">
+      </div>
+      <div class="field">
+        <label>Resulting transfer function</label>
+        <div class="eq-readout" id="plantReadout">P(s) = &hellip;</div>
+      </div>
+      <div class="hint">Write polynomials in <code>s</code>: <code>+ - * ^ ( )</code> and one division, e.g. <code>(s+1)/(s^2+2s+1)</code>.</div>
+    </div>
+
+    <!-- Test signal -->
+    <div class="control-card">
+      <div class="card-head">
+        <span class="card-title"><span class="idx">03</span>Test input r(t)</span>
+        <div class="segmented" id="sigModeSeg">
+          <button data-sig="step" class="active">Step</button>
+          <button data-sig="ramp">Ramp</button>
+          <button data-sig="sine">Sine</button>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="amp">Amplitude</label><input type="number" id="amp" class="mono" step="0.1" value="1"></div>
+        <div class="field" id="freqField"><label for="freq">Freq (Hz)</label><input type="number" id="freq" class="mono" step="0.05" min="0.01" value="0.5"></div>
+        <div class="field"><label for="dur">Duration (s)</label><input type="number" id="dur" class="mono" step="0.5" value="10"></div>
+      </div>
+      <div class="range-row" id="freqSliderRow">
+        <input type="range" id="freqSlider" min="-1.3" max="1.7" step="0.01" value="-0.301">
+        <button class="small-btn" id="durAutoBtn">Auto duration</button>
+      </div>
+      <div class="hint">Sine frequency slider sweeps 0.05&ndash;50&thinsp;Hz (log scale) and marks &omega; on the Bode, phase and Nyquist diagrams even in Step/Ramp mode. Duration auto-fits the dominant time constant unless edited.</div>
+    </div>
+  </div>
+
+  <div class="status-strip" id="statusStrip"></div>
+
+  <div class="panels-grid" id="panelsGrid">
+    <div class="panel" data-id="time">
+      <div class="panel-header">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="panel-title">Time response <span class="sub" id="timeSub">step, r&rarr;y</span></span>
+        <div class="reorder-btns"><button class="reset-view" data-reset="time" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
+      </div>
+      <div class="panel-body"><canvas id="cvTime"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+    </div>
+
+    <div class="panel" data-id="polezero">
+      <div class="panel-header">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="panel-title">Pole&ndash;zero map <span class="sub">closed loop T(s)</span></span>
+        <div class="reorder-btns"><button class="reset-view" data-reset="polezero" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
+      </div>
+      <div class="panel-body"><canvas id="cvPZ"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+    </div>
+
+    <div class="panel" data-id="bodemag">
+      <div class="panel-header">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="panel-title">Bode &mdash; magnitude <span class="sub">open loop L(j&omega;)</span></span>
+        <div class="reorder-btns"><button class="reset-view" data-reset="bodemag" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
+      </div>
+      <div class="panel-body"><canvas id="cvBodeMag"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+    </div>
+
+    <div class="panel" data-id="bodephase">
+      <div class="panel-header">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="panel-title">Bode &mdash; phase <span class="sub">open loop L(j&omega;)</span></span>
+        <div class="reorder-btns"><button class="reset-view" data-reset="bodephase" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
+      </div>
+      <div class="panel-body"><canvas id="cvBodePhase"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+    </div>
+
+    <div class="panel" data-id="nyquist">
+      <div class="panel-header">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="panel-title">Nyquist diagram <span class="sub">open loop L(j&omega;)</span></span>
+        <div class="reorder-btns"><button class="reset-view" data-reset="nyquist" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
+      </div>
+      <div class="panel-body"><canvas id="cvNyquist"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+    </div>
+
+    <div class="panel" data-id="rootlocus">
+      <div class="panel-header">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="panel-title">Root locus <span class="sub">gain K sweep of L(s)</span></span>
+        <div class="reorder-btns"><button class="reset-view" data-reset="rootlocus" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
+      </div>
+      <div class="panel-body"><canvas id="cvRootLocus"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+    </div>
+  </div>
+
+  <footer class="notes">
+    Drag a panel by its header (&#8942;&#8942;) or use the &#9650;/&#9660; buttons to rearrange the bench. Scroll to zoom and drag to pan any diagram; &#8635; resets that panel's view. The violet marker tracks the tuned frequency from the Test input card. All six panels recompute live as you edit the controller, process, or test input.
+  </footer>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+   1. MATH CORE — complex numbers, polynomials, root finding, parsing,
+      state-space simulation, frequency response, root locus.
+   ========================================================================= */
+
+const cAdd=(a,b)=>[a[0]+b[0],a[1]+b[1]];
+const cSub=(a,b)=>[a[0]-b[0],a[1]-b[1]];
+const cMul=(a,b)=>[a[0]*b[0]-a[1]*b[1],a[0]*b[1]+a[1]*b[0]];
+const cDiv=(a,b)=>{const d=b[0]*b[0]+b[1]*b[1];return [(a[0]*b[0]+a[1]*b[1])/d,(a[1]*b[0]-a[0]*b[1])/d];};
+const cAbs=(a)=>Math.hypot(a[0],a[1]);
+const cArg=(a)=>Math.atan2(a[1],a[0]);
+const cScale=(a,k)=>[a[0]*k,a[1]*k];
+
+function polyAdd(a,b){
+  const n=Math.max(a.length,b.length);
+  const ap=Array(n-a.length).fill(0).concat(a);
+  const bp=Array(n-b.length).fill(0).concat(b);
+  return ap.map((v,i)=>v+bp[i]);
+}
+function polyScale(a,k){return a.map(v=>v*k);}
+function polyMul(a,b){
+  const res=new Array(a.length+b.length-1).fill(0);
+  for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++)res[i+j]+=a[i]*b[j];
+  return res;
+}
+function polyTrim(p){
+  let i=0;
+  while(i<p.length-1 && Math.abs(p[i])<1e-14)i++;
+  return p.slice(i);
+}
+function polyEvalC(p,s){
+  let acc=[0,0];
+  for(const c of p)acc=cAdd(cMul(acc,s),[c,0]);
+  return acc;
+}
+function polyRoots(pIn){
+  const p=polyTrim(pIn);
+  const n=p.length-1;
+  if(n<=0)return [];
+  const mono=p.map(v=>v/p[0]);
+  if(n===1)return [[-mono[1],0]];
+  let maxc=0;
+  for(const v of mono)maxc=Math.max(maxc,Math.abs(v));
+  const R=1+maxc;
+  let roots=[];
+  const base=[0.4,0.9];
+  let cur=[1,0];
+  for(let k=0;k<n;k++){cur=cMul(cur,base);const m=cAbs(cur)||1;roots.push(cScale(cur,R/m));}
+  for(let iter=0;iter<200;iter++){
+    let maxDelta=0;
+    const next=roots.slice();
+    for(let i=0;i<n;i++){
+      const fx=polyEvalC(mono,roots[i]);
+      let denom=[1,0];
+      for(let j=0;j<n;j++){if(j===i)continue;denom=cMul(denom,cSub(roots[i],roots[j]));}
+      const delta=cDiv(fx,denom);
+      next[i]=cSub(roots[i],delta);
+      maxDelta=Math.max(maxDelta,cAbs(delta));
+    }
+    roots=next;
+    if(maxDelta<1e-11)break;
+  }
+  return roots;
+}
+
+/* ---- polynomial-in-s expression parser (supports one top-level division) ---- */
+function tokenize(str){
+  const tokens=[];let i=0;
+  while(i<str.length){
+    const c=str[i];
+    if(/\s/.test(c)){i++;continue;}
+    if(/[0-9.]/.test(c)){
+      let j=i;
+      while(j<str.length && /[0-9.eE+-]/.test(str[j])){
+        if((str[j]==='+'||str[j]==='-') && !/[eE]/.test(str[j-1]))break;
+        j++;
+      }
+      tokens.push({t:'num',v:parseFloat(str.slice(i,j))});
+      i=j;continue;
+    }
+    if(c==='s'||c==='S'){tokens.push({t:'s'});i++;continue;}
+    if('+-*^()/'.includes(c)){tokens.push({t:c});i++;continue;}
+    throw new Error('Unexpected character "'+c+'"');
+  }
+  const out=[];
+  for(let k=0;k<tokens.length;k++){
+    out.push(tokens[k]);
+    const cur=tokens[k],nxt=tokens[k+1];
+    if(!nxt)continue;
+    const curEnds=cur.t==='num'||cur.t==='s'||cur.t===')';
+    const nxtStarts=nxt.t==='num'||nxt.t==='s'||nxt.t==='(';
+    if(curEnds&&nxtStarts)out.push({t:'*'});
+  }
+  return out;
+}
+function parsePolyExpr(str){
+  const tokens=tokenize(str);let pos=0;
+  const peek=()=>tokens[pos];
+  const next=()=>tokens[pos++];
+  function parseExpr(){
+    let node=parseTerm();
+    while(peek()&&(peek().t==='+'||peek().t==='-')){
+      const op=next().t;const rhs=parseTerm();
+      node=op==='+'?polyAdd(node,rhs):polyAdd(node,polyScale(rhs,-1));
+    }
+    return node;
+  }
+  function parseTerm(){
+    let node=parseUnary();
+    while(peek()&&(peek().t==='*'||peek().t==='/')){
+      const op=next().t;const rhs=parseUnary();
+      if(op==='*')node=polyMul(node,rhs);
+      else{
+        if(rhs.length!==1)throw new Error('Only division by a constant is supported inside one expression — use the P(s)/C(s) field as num/den instead.');
+        if(rhs[0]===0)throw new Error('Division by zero');
+        node=polyScale(node,1/rhs[0]);
+      }
+    }
+    return node;
+  }
+  function parseUnary(){
+    if(peek()&&peek().t==='-'){next();return polyScale(parseUnary(),-1);}
+    if(peek()&&peek().t==='+'){next();return parseUnary();}
+    return parsePow();
+  }
+  function parsePow(){
+    let node=parseAtom();
+    if(peek()&&peek().t==='^'){
+      next();const e=next();
+      if(!e||e.t!=='num'||e.v<0||!Number.isInteger(e.v))throw new Error('Exponents must be non-negative integers');
+      let result=[1];
+      for(let i=0;i<e.v;i++)result=polyMul(result,node);
+      node=result;
+    }
+    return node;
+  }
+  function parseAtom(){
+    const tok=peek();
+    if(!tok)throw new Error('Unexpected end of expression');
+    if(tok.t==='num'){next();return [tok.v];}
+    if(tok.t==='s'){next();return [1,0];}
+    if(tok.t==='('){
+      next();const node=parseExpr();
+      if(!peek()||peek().t!==')')throw new Error('Missing closing parenthesis');
+      next();return node;
+    }
+    throw new Error('Unexpected token near position '+pos);
+  }
+  const node=parseExpr();
+  if(pos!==tokens.length)throw new Error('Unexpected trailing input');
+  return polyTrim(node);
+}
+function parseTF(str){
+  str=(str||'').trim();
+  if(!str)throw new Error('Enter a transfer function');
+  let depth=0,splitAt=-1;
+  for(let i=0;i<str.length;i++){
+    const c=str[i];
+    if(c==='(')depth++;
+    else if(c===')')depth--;
+    else if(c==='/'&&depth===0){splitAt=i;break;}
+  }
+  let num,den;
+  if(splitAt===-1){num=parsePolyExpr(str);den=[1];}
+  else{num=parsePolyExpr(str.slice(0,splitAt));den=parsePolyExpr(str.slice(splitAt+1));}
+  if(den.length===1&&den[0]===0)throw new Error('Denominator is zero');
+  const deg=Math.max(num.length,den.length)-1;
+  if(deg>12)throw new Error('Polynomial degree too high (max 12) for stable root-finding here');
+  return {num,den};
+}
+
+/* ---- state-space (controllable canonical form) + RK4 simulation ---- */
+function buildStateSpace(numDesc,denDescRaw){
+  const denDesc=polyTrim(denDescRaw);
+  let num=polyTrim(numDesc).map(v=>v/denDesc[0]);
+  const den=denDesc.map(v=>v/denDesc[0]);
+  const n=den.length-1;
+  let improper=false;
+  if(num.length>den.length){num=num.slice(num.length-den.length);improper=true;}
+  const padded=Array(den.length-num.length).fill(0).concat(num);
+  const ascDen=[],ascNum=[];
+  for(let i=0;i<=n;i++){ascDen[i]=den[n-i];ascNum[i]=padded[n-i];}
+  if(n===0)return {n:0,A:[],B:[],C:[],D:ascNum[0],improper};
+  const A=Array.from({length:n},()=>new Array(n).fill(0));
+  for(let i=0;i<n-1;i++)A[i][i+1]=1;
+  for(let j=0;j<n;j++)A[n-1][j]=-ascDen[j];
+  const B=new Array(n).fill(0);B[n-1]=1;
+  const C=new Array(n).fill(0);
+  for(let i=0;i<n;i++)C[i]=ascNum[i]-ascNum[n]*ascDen[i];
+  return {n,A,B,C,D:ascNum[n],improper};
+}
+function simulate(ss,uFunc,tEnd,steps){
+  const dt=tEnd/steps,n=ss.n;
+  let x=new Array(n).fill(0);
+  const ts=[],ys=[],us=[];
+  function f(t,xv){
+    const dx=new Array(n).fill(0);
+    for(let i=0;i<n;i++){
+      let s=0;for(let j=0;j<n;j++)s+=ss.A[i][j]*xv[j];
+      dx[i]=s+ss.B[i]*uFunc(t);
+    }
+    return dx;
+  }
+  function outAt(t,xv){let y=ss.D*uFunc(t);for(let i=0;i<n;i++)y+=ss.C[i]*xv[i];return y;}
+  for(let k=0;k<=steps;k++){
+    const t=k*dt;ts.push(t);us.push(uFunc(t));
+    if(n===0){ys.push(ss.D*uFunc(t));continue;}
+    ys.push(outAt(t,x));
+    if(k===steps)break;
+    const k1=f(t,x);
+    const x2=x.map((v,i)=>v+(dt/2)*k1[i]);
+    const k2=f(t+dt/2,x2);
+    const x3=x.map((v,i)=>v+(dt/2)*k2[i]);
+    const k3=f(t+dt/2,x3);
+    const x4=x.map((v,i)=>v+dt*k3[i]);
+    const k4=f(t+dt,x4);
+    x=x.map((v,i)=>v+(dt/6)*(k1[i]+2*k2[i]+2*k3[i]+k4[i]));
+  }
+  return {ts,ys,us};
+}
+function freqResp(num,den,w){return cDiv(polyEvalC(num,[0,w]),polyEvalC(den,[0,w]));}
+function unwrapDeg(arr){
+  const out=arr.slice();
+  for(let i=1;i<out.length;i++){
+    let d=out[i]-out[i-1];
+    while(d>180){out[i]-=360;d=out[i]-out[i-1];}
+    while(d<-180){out[i]+=360;d=out[i]-out[i-1];}
+  }
+  return out;
+}
+function rootLocus(numL,denL,kMax,steps){
+  const Ks=[0];
+  const lo=-2, hi=Math.log10(kMax);
+  for(let i=0;i<steps;i++){const t=i/(steps-1);Ks.push(Math.pow(10,lo+t*(hi-lo)));}
+  const branches=[];let prevRoots=null;
+  for(const K of Ks){
+    const charPoly=polyAdd(denL,polyScale(numL,K));
+    let roots=polyRoots(charPoly);
+    if(prevRoots&&roots.length===prevRoots.length){
+      const used=new Array(roots.length).fill(false);
+      const ordered=new Array(prevRoots.length);
+      for(let i=0;i<prevRoots.length;i++){
+        let best=-1,bestD=Infinity;
+        for(let j=0;j<roots.length;j++){
+          if(used[j])continue;
+          const d=Math.hypot(roots[j][0]-prevRoots[i][0],roots[j][1]-prevRoots[i][1]);
+          if(d<bestD){bestD=d;best=j;}
+        }
+        used[best]=true;ordered[i]=roots[best];
+      }
+      roots=ordered;
+    }
+    prevRoots=roots;
+    roots.forEach((r,idx)=>{if(!branches[idx])branches[idx]=[];branches[idx].push({K,re:r[0],im:r[1]});});
+  }
+  return branches;
+}
+
+/* =========================================================================
+   2. PRESETS
+   ========================================================================= */
+const PLANT_PRESETS=[
+  {name:'Integrator  ·  1/s', expr:'1/s'},
+  {name:'First-order lag  ·  1/(s+1)', expr:'1/(s+1)'},
+  {name:'Second-order, overdamped  ·  1/((s+1)(s+2))', expr:'1/((s+1)*(s+2))'},
+  {name:'Second-order, underdamped  ·  1/(s²+0.4s+4)', expr:'1/(s^2+0.4*s+4)'},
+  {name:'Unstable pole  ·  1/(s-1)', expr:'1/(s-1)'},
+  {name:'Type-1 with lag  ·  1/(s(s+2))', expr:'1/(s*(s+2))'},
+  {name:'Double integrator  ·  1/s²', expr:'1/s^2'},
+  {name:'Non-minimum phase  ·  (1-s)/((s+1)(s+2))', expr:'(1-s)/((s+1)*(s+2))'},
+  {name:'Third-order lag  ·  1/((s+1)(s+2)(s+4))', expr:'1/((s+1)*(s+2)*(s+4))'},
+  {name:'Lightly-damped resonance  ·  1/(s²+0.1s+9)', expr:'1/(s^2+0.1*s+9)'},
+];
+const CTRL_PRESETS=[
+  {name:'P  ·  proportional only', expr:'3'},
+  {name:'PI  ·  (2s+1)/s', expr:'(2*s+1)/s'},
+  {name:'PD  ·  0.5s+2', expr:'0.5*s+2'},
+  {name:'PID  ·  (0.5s²+2s+1)/s', expr:'(0.5*s^2+2*s+1)/s'},
+  {name:'Lead compensator  ·  5(s+1)/(s+5)', expr:'5*(s+1)/(s+5)'},
+  {name:'Lag compensator  ·  0.5(s+1)/(s+0.1)', expr:'0.5*(s+1)/(s+0.1)'},
+];
+
+/* =========================================================================
+   3. CANVAS PLOTTING HELPERS  — fixed "scope" theme, independent of page theme
+   ========================================================================= */
+const SC={
+  bg:'#0B1210', grid:'#173028', gridMajor:'#20463B', axis:'#3E6F60', text:'#8FCBB8',
+  input:'#3E8FC4', output:'#BD7422', locus:'#A876C7', secondary:'#33A87D',
+  good:'#3DDC84', bad:'#FF6B5E', dim:'rgba(143,203,184,0.5)'
+};
+
+function fitCanvas(canvas){
+  const rect=canvas.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  const w=Math.max(1,Math.round(rect.width)), h=Math.max(1,Math.round(rect.height));
+  if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){
+    canvas.width=Math.round(w*dpr); canvas.height=Math.round(h*dpr);
+  }
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle=SC.bg; ctx.fillRect(0,0,w,h);
+  return {ctx,w,h};
+}
+function niceStep(range,count){
+  const raw=range/count;
+  const mag=Math.pow(10,Math.floor(Math.log10(raw)));
+  const norm=raw/mag;
+  let step;
+  if(norm<1.5)step=1; else if(norm<3)step=2; else if(norm<7)step=5; else step=10;
+  return step*mag;
+}
+function linTicks(min,max,count){
+  if(max<=min)max=min+1;
+  const step=niceStep(max-min,count);
+  const start=Math.ceil(min/step)*step;
+  const ticks=[];
+  for(let v=start;v<=max+1e-9;v+=step)ticks.push(Math.abs(v)<step*1e-9?0:v);
+  return ticks;
+}
+function fmtNum(v){
+  if(v===0)return '0';
+  const a=Math.abs(v);
+  if(a>=1000||a<0.001)return v.toExponential(1);
+  return (Math.round(v*1000)/1000).toString();
+}
+const lin=(domain,range)=>(v)=>range[0]+(v-domain[0])/(domain[1]-domain[0])*(range[1]-range[0]);
+
+/* ---- pan/zoom view state ----
+   "rect" panels (time, bode mag, bode phase) keep an independent {x0,x1,y0,y1}
+   data window (x is log10(w) for the Bode panels). "disc" panels (Nyquist,
+   root locus, pole-zero) keep an equal-aspect {cx,cy,halfSpan} window so a
+   zoom never distorts the complex plane. views[key]===null means "auto-fit". */
+const views={time:null,polezero:null,bodemag:null,bodephase:null,nyquist:null,rootlocus:null};
+const lastRender={};
+function clampRange(a,b,minW,maxW){
+  let w=b-a;
+  if(w<minW){const c=(a+b)/2;a=c-minW/2;b=c+minW/2;}
+  else if(w>maxW){const c=(a+b)/2;a=c-maxW/2;b=c+maxW/2;}
+  return [a,b];
+}
+function interpAtLogW(ws,ys,wTarget){
+  if(wTarget<=ws[0])return ys[0];
+  if(wTarget>=ws[ws.length-1])return ys[ys.length-1];
+  for(let i=0;i<ws.length-1;i++){
+    if(ws[i]<=wTarget&&wTarget<=ws[i+1]){
+      const lt=(Math.log10(wTarget)-Math.log10(ws[i]))/(Math.log10(ws[i+1])-Math.log10(ws[i]));
+      return ys[i]+lt*(ys[i+1]-ys[i]);
+    }
+  }
+  return ys[ys.length-1];
+}
+/* attach wheel-zoom + drag-pan + dblclick-reset to a "rect" panel (independent x/y) */
+function attachRectZoomPan(canvas,key,limits){
+  canvas.addEventListener('wheel',(e)=>{
+    const lr=lastRender[key]; if(!lr)return;
+    e.preventDefault();
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const dataX=lr.x0+(mx-lr.px0)/(lr.px1-lr.px0)*(lr.x1-lr.x0);
+    const dataY=lr.y0+(lr.py1-my)/(lr.py1-lr.py0)*(lr.y1-lr.y0);
+    const factor=e.deltaY<0?1/1.2:1.2;
+    let nx0=dataX-(dataX-lr.x0)*factor, nx1=dataX+(lr.x1-dataX)*factor;
+    let ny0=dataY-(dataY-lr.y0)*factor, ny1=dataY+(lr.y1-dataY)*factor;
+    [nx0,nx1]=clampRange(nx0,nx1,limits.minXW,limits.maxXW);
+    [ny0,ny1]=clampRange(ny0,ny1,limits.minYW,limits.maxYW);
+    views[key]={x0:nx0,x1:nx1,y0:ny0,y1:ny1};
+    redrawAll();
+  },{passive:false});
+  let drag=null;
+  canvas.addEventListener('pointerdown',(e)=>{
+    const lr=lastRender[key]; if(!lr)return;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add('panning');
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    drag={
+      ax:lr.x0+(mx-lr.px0)/(lr.px1-lr.px0)*(lr.x1-lr.x0),
+      ay:lr.y0+(lr.py1-my)/(lr.py1-lr.py0)*(lr.y1-lr.y0),
+      w:lr.x1-lr.x0, h:lr.y1-lr.y0,
+      px0:lr.px0,px1:lr.px1,py0:lr.py0,py1:lr.py1
+    };
+  });
+  canvas.addEventListener('pointermove',(e)=>{
+    if(!drag)return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const nx0=drag.ax-(mx-drag.px0)/(drag.px1-drag.px0)*drag.w;
+    const ny0=drag.ay-(drag.py1-my)/(drag.py1-drag.py0)*drag.h;
+    views[key]={x0:nx0,x1:nx0+drag.w,y0:ny0,y1:ny0+drag.h};
+    redrawAll();
+  });
+  const end=(e)=>{if(drag){drag=null;canvas.classList.remove('panning');try{canvas.releasePointerCapture(e.pointerId);}catch(err){}}};
+  canvas.addEventListener('pointerup',end);
+  canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('dblclick',()=>{views[key]=null;redrawAll();});
+}
+/* attach wheel-zoom + drag-pan + dblclick-reset to an equal-aspect complex-plane panel */
+function attachDiscZoomPan(canvas,key,limits){
+  canvas.addEventListener('wheel',(e)=>{
+    const lr=lastRender[key]; if(!lr)return;
+    e.preventDefault();
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const dataX=lr.cx+(mx-lr.pcx)/lr.scale, dataY=lr.cy-(my-lr.pcy)/lr.scale;
+    const factor=e.deltaY<0?1/1.2:1.2;
+    let newHalf=lr.halfSpan*factor;
+    newHalf=Math.min(limits.maxSpan,Math.max(limits.minSpan,newHalf));
+    const nx=dataX-(dataX-lr.cx)*factor, ny=dataY-(dataY-lr.cy)*factor;
+    views[key]={cx:nx,cy:ny,halfSpan:newHalf};
+    redrawAll();
+  },{passive:false});
+  let drag=null;
+  canvas.addEventListener('pointerdown',(e)=>{
+    const lr=lastRender[key]; if(!lr)return;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add('panning');
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    drag={ax:lr.cx+(mx-lr.pcx)/lr.scale, ay:lr.cy-(my-lr.pcy)/lr.scale, scale:lr.scale, pcx:lr.pcx, pcy:lr.pcy, halfSpan:lr.halfSpan};
+  });
+  canvas.addEventListener('pointermove',(e)=>{
+    if(!drag)return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const ncx=drag.ax-(mx-drag.pcx)/drag.scale;
+    const ncy=drag.ay+(my-drag.pcy)/drag.scale;
+    views[key]={cx:ncx,cy:ncy,halfSpan:drag.halfSpan};
+    redrawAll();
+  });
+  const end=(e)=>{if(drag){drag=null;canvas.classList.remove('panning');try{canvas.releasePointerCapture(e.pointerId);}catch(err){}}};
+  canvas.addEventListener('pointerup',end);
+  canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('dblclick',()=>{views[key]=null;redrawAll();});
+}
+function tunedMarker(ctx,x,y,label){
+  ctx.save();
+  ctx.fillStyle=SC.locus;ctx.strokeStyle=SC.locus;ctx.lineWidth=1.6;
+  ctx.beginPath();ctx.moveTo(x-7,y);ctx.lineTo(x+7,y);ctx.moveTo(x,y-7);ctx.lineTo(x,y+7);ctx.stroke();
+  ctx.beginPath();ctx.arc(x,y,3.2,0,Math.PI*2);ctx.fill();
+  ctx.font='600 10.5px "IBM Plex Mono",monospace';
+  ctx.textAlign='left';ctx.textBaseline='bottom';
+  ctx.fillText(label,x+9,y-6);
+  ctx.restore();
+}
+
+function plotFrame(ctx,w,h,pad){
+  const px0=pad.l, px1=w-pad.r, py0=pad.t, py1=h-pad.b;
+  ctx.strokeStyle=SC.axis; ctx.lineWidth=1;
+  ctx.strokeRect(px0+.5,py0+.5,px1-px0,py1-py0);
+  return {px0,px1,py0,py1};
+}
+function drawTrace(ctx,pts,color,opts){
+  opts=opts||{};
+  ctx.save();
+  ctx.strokeStyle=color;
+  ctx.lineWidth=opts.width||1.8;
+  if(opts.dash)ctx.setLineDash(opts.dash);
+  ctx.globalAlpha=opts.alpha!==undefined?opts.alpha:1;
+  if(opts.glow){ctx.shadowColor=color;ctx.shadowBlur=opts.glow;}
+  ctx.beginPath();
+  let started=false;
+  for(const p of pts){
+    if(p===null){started=false;continue;}
+    if(!started){ctx.moveTo(p[0],p[1]);started=true;}
+    else ctx.lineTo(p[0],p[1]);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function drawLegend(ctx,x,y,items){
+  ctx.save();
+  ctx.font='500 11px "IBM Plex Mono",monospace';
+  let cx=x;
+  for(const it of items){
+    ctx.fillStyle=it.color;
+    ctx.fillRect(cx,y-7,14,3);
+    ctx.fillStyle=SC.text;
+    const tw=ctx.measureText(it.label).width;
+    ctx.fillText(it.label,cx+19,y+3);
+    cx+=19+tw+16;
+  }
+  ctx.restore();
+}
+function axisLabel(ctx,text,x,y,align){
+  ctx.save();
+  ctx.font='500 10.5px "IBM Plex Mono",monospace';
+  ctx.fillStyle=SC.text;
+  ctx.textAlign=align||'center';
+  ctx.textBaseline='middle';
+  ctx.fillText(text,x,y);
+  ctx.restore();
+}
+function crossMarker(ctx,x,y,r,color){
+  ctx.save();ctx.strokeStyle=color;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x-r,y+r);ctx.lineTo(x+r,y-r);ctx.stroke();
+  ctx.restore();
+}
+function circleMarker(ctx,x,y,r,color,fill){
+  ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+  if(fill)ctx.fill();else ctx.stroke();
+  ctx.restore();
+}
+function diamondMarker(ctx,x,y,r,color){
+  ctx.save();ctx.fillStyle=color;
+  ctx.beginPath();ctx.moveTo(x,y-r);ctx.lineTo(x+r,y);ctx.lineTo(x,y+r);ctx.lineTo(x-r,y);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+function emptyState(ctx,w,h,msg){
+  ctx.save();ctx.fillStyle=SC.dim;ctx.font='500 12px "IBM Plex Mono",monospace';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(msg,w/2,h/2);ctx.restore();
+}
+
+/* =========================================================================
+   4. PANEL RENDERERS
+   ========================================================================= */
+function renderTime(canvas,data,sigType,view){
+  const {ctx,w,h}=fitCanvas(canvas);
+  if(!data){emptyState(ctx,w,h,'no data');return;}
+  const pad={l:44,r:14,t:14,b:26};
+  const {ts,ys,us}=data;
+  let x0=ts[0],x1=ts[ts.length-1],yMin,yMax;
+  if(view){x0=view.x0;x1=view.x1;yMin=view.y0;yMax=view.y1;}
+  else{
+    yMin=Math.min(...ys,...us); yMax=Math.max(...ys,...us);
+    if(!isFinite(yMin)||!isFinite(yMax)){emptyState(ctx,w,h,'response diverges — see chip above');return;}
+    if(yMax-yMin<1e-6){yMin-=1;yMax+=1;}
+    const pd=(yMax-yMin)*0.08; yMin-=pd; yMax+=pd;
+  }
+  const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
+  const X=lin([x0,x1],[px0,px1]);
+  const Y=lin([yMin,yMax],[py1,py0]);
+  lastRender.time={x0,x1,y0:yMin,y1:yMax,px0,px1,py0,py1};
+  ctx.save();ctx.beginPath();ctx.rect(px0,py0,px1-px0,py1-py0);ctx.clip();
+  ctx.strokeStyle=SC.grid; ctx.lineWidth=1;
+  for(const t of linTicks(x0,x1,6)){
+    const x=X(t); ctx.beginPath();ctx.moveTo(x,py0);ctx.lineTo(x,py1);ctx.stroke();
+    axisLabel(ctx,fmtNum(t),x,py1+13);
+  }
+  for(const v of linTicks(yMin,yMax,5)){
+    const y=Y(v); ctx.beginPath();ctx.moveTo(px0,y);ctx.lineTo(px1,y);ctx.stroke();
+    axisLabel(ctx,fmtNum(v),px0-8,y,'right');
+  }
+  if(yMin<0&&yMax>0){ctx.strokeStyle=SC.gridMajor;const y0l=Y(0);ctx.beginPath();ctx.moveTo(px0,y0l);ctx.lineTo(px1,y0l);ctx.stroke();}
+  const inPts=ts.map((t,i)=>[X(t),Y(us[i])]);
+  const outPts=ts.map((t,i)=>[X(t),Y(ys[i])]);
+  drawTrace(ctx,inPts,SC.input,{width:1.6,dash:[5,4],alpha:.85});
+  drawTrace(ctx,outPts,SC.output,{width:2.1,glow:3});
+  ctx.restore();
+  drawLegend(ctx,px0+4,py0+14,[{color:SC.input,label:'reference r(t)'},{color:SC.output,label:'output y(t)'}]);
+}
+
+function renderBodeMag(canvas,fr,view){
+  const {ctx,w,h}=fitCanvas(canvas);
+  if(!fr){emptyState(ctx,w,h,'no data');return;}
+  const pad={l:46,r:14,t:14,b:26};
+  const {ws,mags}=fr;
+  let logMin,logMax,yMin,yMax;
+  if(view){logMin=view.x0;logMax=view.x1;yMin=view.y0;yMax=view.y1;}
+  else{
+    logMin=Math.log10(ws[0]); logMax=Math.log10(ws[ws.length-1]);
+    yMin=Math.min(...mags,0); yMax=Math.max(...mags,0);
+    const pd=Math.max(4,(yMax-yMin)*0.1); yMin-=pd; yMax+=pd;
+  }
+  const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
+  const X=lin([logMin,logMax],[px0,px1]);
+  const Y=lin([yMin,yMax],[py1,py0]);
+  lastRender.bodemag={x0:logMin,x1:logMax,y0:yMin,y1:yMax,px0,px1,py0,py1};
+  ctx.save();ctx.beginPath();ctx.rect(px0,py0,px1-px0,py1-py0);ctx.clip();
+  ctx.strokeStyle=SC.grid;ctx.lineWidth=1;
+  for(let d=Math.floor(logMin);d<=Math.ceil(logMax);d++){
+    const x=X(d); if(x<px0-1||x>px1+1)continue;
+    ctx.beginPath();ctx.moveTo(x,py0);ctx.lineTo(x,py1);ctx.stroke();
+    axisLabel(ctx,'10^'+d,x,py1+13);
+  }
+  for(const v of linTicks(yMin,yMax,5)){
+    const y=Y(v);ctx.beginPath();ctx.moveTo(px0,y);ctx.lineTo(px1,y);ctx.stroke();
+    axisLabel(ctx,fmtNum(v)+'',px0-8,y,'right');
+  }
+  if(yMin<0&&yMax>0){ctx.strokeStyle=SC.gridMajor;const y0=Y(0);ctx.beginPath();ctx.moveTo(px0,y0);ctx.lineTo(px1,y0);ctx.stroke();
+    axisLabel(ctx,'0dB',px0+22,y0-8);}
+  const pts=ws.map((wv,i)=>[X(Math.log10(wv)),Y(mags[i])]);
+  drawTrace(ctx,pts,SC.output,{width:2.1,glow:3});
+  if(fr.wgc){
+    const x=X(Math.log10(fr.wgc));
+    ctx.save();ctx.strokeStyle=SC.secondary;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(x,py0);ctx.lineTo(x,py1);ctx.stroke();ctx.restore();
+    circleMarker(ctx,x,Y(0),4,SC.secondary,true);
+    axisLabel(ctx,'ωgc',x,py0+10);
+  }
+  if(fr.tuned){
+    const lw=Math.log10(fr.tuned.w);
+    if(lw>=logMin&&lw<=logMax&&fr.tuned.mag>=yMin&&fr.tuned.mag<=yMax)
+      tunedMarker(ctx,X(lw),Y(fr.tuned.mag),fr.tuned.hz+' Hz');
+  }
+  ctx.restore();
+}
+function renderBodePhase(canvas,fr,view){
+  const {ctx,w,h}=fitCanvas(canvas);
+  if(!fr){emptyState(ctx,w,h,'no data');return;}
+  const pad={l:46,r:14,t:14,b:26};
+  const {ws,phases}=fr;
+  let logMin,logMax,yMin,yMax;
+  if(view){logMin=view.x0;logMax=view.x1;yMin=view.y0;yMax=view.y1;}
+  else{
+    logMin=Math.log10(ws[0]); logMax=Math.log10(ws[ws.length-1]);
+    yMin=Math.min(...phases,-180); yMax=Math.max(...phases,0);
+    const pd=Math.max(8,(yMax-yMin)*0.1); yMin-=pd; yMax+=pd;
+  }
+  const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
+  const X=lin([logMin,logMax],[px0,px1]);
+  const Y=lin([yMin,yMax],[py1,py0]);
+  lastRender.bodephase={x0:logMin,x1:logMax,y0:yMin,y1:yMax,px0,px1,py0,py1};
+  ctx.save();ctx.beginPath();ctx.rect(px0,py0,px1-px0,py1-py0);ctx.clip();
+  ctx.strokeStyle=SC.grid;ctx.lineWidth=1;
+  for(let d=Math.floor(logMin);d<=Math.ceil(logMax);d++){
+    const x=X(d); if(x<px0-1||x>px1+1)continue;
+    ctx.beginPath();ctx.moveTo(x,py0);ctx.lineTo(x,py1);ctx.stroke();
+    axisLabel(ctx,'10^'+d,x,py1+13);
+  }
+  for(const v of linTicks(yMin,yMax,5)){
+    const y=Y(v);ctx.beginPath();ctx.moveTo(px0,y);ctx.lineTo(px1,y);ctx.stroke();
+    axisLabel(ctx,fmtNum(v)+'°',px0-8,y,'right');
+  }
+  ctx.save();ctx.strokeStyle=SC.gridMajor;ctx.setLineDash([2,3]);
+  const y180=Y(-180); if(-180>=yMin&&-180<=yMax){ctx.beginPath();ctx.moveTo(px0,y180);ctx.lineTo(px1,y180);ctx.stroke();}
+  ctx.restore();
+  const pts=ws.map((wv,i)=>[X(Math.log10(wv)),Y(phases[i])]);
+  drawTrace(ctx,pts,SC.output,{width:2.1,glow:3});
+  if(fr.wpc){
+    const x=X(Math.log10(fr.wpc));
+    ctx.save();ctx.strokeStyle=SC.secondary;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(x,py0);ctx.lineTo(x,py1);ctx.stroke();ctx.restore();
+    circleMarker(ctx,x,y180,4,SC.secondary,true);
+    axisLabel(ctx,'ωpc',x,py0+10);
+  }
+  if(fr.tuned){
+    const lw=Math.log10(fr.tuned.w);
+    if(lw>=logMin&&lw<=logMax&&fr.tuned.phase>=yMin&&fr.tuned.phase<=yMax)
+      tunedMarker(ctx,X(lw),Y(fr.tuned.phase),fr.tuned.hz+' Hz');
+  }
+  ctx.restore();
+}
+function renderNyquist(canvas,fr,view){
+  const {ctx,w,h}=fitCanvas(canvas);
+  if(!fr){emptyState(ctx,w,h,'no data');return;}
+  const pad={l:40,r:16,t:14,b:26};
+  const {re,im}=fr;
+  const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
+  const sizeX=px1-px0, sizeY=py1-py0;
+  const pcx=(px0+px1)/2, pcy=(py0+py1)/2;
+  let vcx=0,vcy=0,halfSpan;
+  if(view){vcx=view.cx;vcy=view.cy;halfSpan=view.halfSpan;}
+  else{
+    let maxAbs=1.5;
+    for(let i=0;i<re.length;i++)maxAbs=Math.max(maxAbs,Math.abs(re[i]),Math.abs(im[i]));
+    halfSpan=Math.min(maxAbs,Math.max(3,maxAbs*0.35+1)); // keep spirals from swamping the -1 region
+  }
+  const scale=Math.min(sizeX,sizeY)/(2*halfSpan);
+  const X=(v)=>pcx+(v-vcx)*scale, Y=(v)=>pcy-(v-vcy)*scale;
+  lastRender.nyquist={cx:vcx,cy:vcy,halfSpan,scale,pcx,pcy,px0,px1,py0,py1};
+  ctx.save();ctx.beginPath();ctx.rect(px0,py0,sizeX,sizeY);ctx.clip();
+  ctx.strokeStyle=SC.grid;ctx.lineWidth=1;
+  for(const v of linTicks(vcx-halfSpan,vcx+halfSpan,4)){
+    ctx.beginPath();ctx.moveTo(X(v),py0);ctx.lineTo(X(v),py1);ctx.stroke();
+  }
+  for(const v of linTicks(vcy-halfSpan,vcy+halfSpan,4)){
+    ctx.beginPath();ctx.moveTo(px0,Y(v));ctx.lineTo(px1,Y(v));ctx.stroke();
+  }
+  ctx.strokeStyle=SC.gridMajor;
+  ctx.beginPath();ctx.moveTo(X(0),py0);ctx.lineTo(X(0),py1);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(px0,Y(0));ctx.lineTo(px1,Y(0));ctx.stroke();
+  ctx.save();ctx.strokeStyle=SC.secondary;ctx.globalAlpha=.5;ctx.setLineDash([2,3]);
+  ctx.beginPath();ctx.arc(X(0),Y(0),scale,0,Math.PI*2);ctx.stroke();ctx.restore();
+  const ptsPos=re.map((v,i)=>[X(v),Y(im[i])]);
+  const ptsNeg=re.map((v,i)=>[X(v),Y(-im[i])]);
+  drawTrace(ctx,ptsNeg,SC.output,{width:1.4,alpha:.4});
+  drawTrace(ctx,ptsPos,SC.output,{width:2.1,glow:3});
+  crossMarker(ctx,X(-1),Y(0),6,SC.bad);
+  axisLabel(ctx,'-1',X(-1),Y(0)-12);
+  if(fr.tuned)tunedMarker(ctx,X(fr.tuned.re),Y(fr.tuned.im),fr.tuned.hz+' Hz');
+  ctx.restore();
+  axisLabel(ctx,'Re',px1-10,pcy+13);
+  axisLabel(ctx,'Im',pcx+16,py0+8);
+}
+function renderRootLocus(canvas,rl,poles,zeros,curPoles,stable,view,tunedW){
+  const {ctx,w,h}=fitCanvas(canvas);
+  if(!rl){emptyState(ctx,w,h,'no data');return;}
+  const pad={l:44,r:16,t:14,b:26};
+  const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
+  const sizeX=px1-px0, sizeY=py1-py0;
+  const pcx=(px0+px1)/2, pcy=(py0+py1)/2;
+  let vcx=0,vcy=0,halfSpan;
+  if(view){vcx=view.cx;vcy=view.cy;halfSpan=view.halfSpan;}
+  else{
+    // Scale the view to the poles/zeros/current design — a locus branch running
+    // off to an asymptote at high K should leave the frame, not compress it.
+    let spread=1;
+    for(const p of poles)spread=Math.max(spread,Math.abs(p[0]),Math.abs(p[1]));
+    for(const z of zeros)spread=Math.max(spread,Math.abs(z[0]),Math.abs(z[1]));
+    for(const p of curPoles)spread=Math.max(spread,Math.abs(p[0]),Math.abs(p[1]));
+    halfSpan=Math.max(spread*1.7,0.75);
+  }
+  const clipAt=halfSpan*1.4;
+  const scale=Math.min(sizeX,sizeY)/(2*halfSpan);
+  const X=(v)=>pcx+(v-vcx)*scale, Y=(v)=>pcy-(v-vcy)*scale;
+  lastRender.rootlocus={cx:vcx,cy:vcy,halfSpan,scale,pcx,pcy,px0,px1,py0,py1};
+  ctx.save();ctx.beginPath();ctx.rect(px0,py0,sizeX,sizeY);ctx.clip();
+  ctx.strokeStyle=SC.grid;ctx.lineWidth=1;
+  for(const v of linTicks(vcx-halfSpan,vcx+halfSpan,4)){
+    ctx.beginPath();ctx.moveTo(X(v),py0);ctx.lineTo(X(v),py1);ctx.stroke();
+  }
+  for(const v of linTicks(vcy-halfSpan,vcy+halfSpan,4)){
+    ctx.beginPath();ctx.moveTo(px0,Y(v));ctx.lineTo(px1,Y(v));ctx.stroke();
+  }
+  ctx.strokeStyle=SC.gridMajor;ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.moveTo(X(0),py0);ctx.lineTo(X(0),py1);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(px0,Y(0));ctx.lineTo(px1,Y(0));ctx.stroke();
+  for(const branch of rl){
+    const pts=branch.map(p=>(Math.abs(p.re-vcx)>clipAt||Math.abs(p.im-vcy)>clipAt)?null:[X(p.re),Y(p.im)]);
+    drawTrace(ctx,pts,SC.locus,{width:1.7,alpha:.85});
+  }
+  for(const p of poles)crossMarker(ctx,X(p[0]),Y(p[1]),5,SC.input);
+  for(const z of zeros)circleMarker(ctx,X(z[0]),Y(z[1]),5,SC.secondary,false);
+  for(const p of curPoles)diamondMarker(ctx,X(p[0]),Y(p[1]),5,stable?SC.good:SC.bad);
+  if(tunedW!=null)tunedMarker(ctx,X(0),Y(tunedW),'');
+  ctx.restore();
+  axisLabel(ctx,'Re',px1-10,pcy+13);
+  axisLabel(ctx,'Im',pcx+16,py0+8);
+  drawLegend(ctx,px0+4,py1-10,[{color:SC.input,label:'pole (×)'},{color:SC.secondary,label:'zero (○)'},{color:stable?SC.good:SC.bad,label:'design (◆)'}]);
+}
+function renderPoleZero(canvas,poles,zeros,view,tunedW){
+  const {ctx,w,h}=fitCanvas(canvas);
+  const pad={l:44,r:16,t:14,b:26};
+  const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
+  const sizeX=px1-px0, sizeY=py1-py0;
+  const pcx=(px0+px1)/2, pcy=(py0+py1)/2;
+  let vcx=0,vcy=0,halfSpan;
+  if(view){vcx=view.cx;vcy=view.cy;halfSpan=view.halfSpan;}
+  else{
+    let maxAbs=1;
+    for(const p of poles)maxAbs=Math.max(maxAbs,Math.abs(p[0]),Math.abs(p[1]));
+    for(const z of zeros)maxAbs=Math.max(maxAbs,Math.abs(z[0]),Math.abs(z[1]));
+    halfSpan=Math.max(maxAbs*1.25,0.5);
+  }
+  const scale=Math.min(sizeX,sizeY)/(2*halfSpan);
+  const X=(v)=>pcx+(v-vcx)*scale, Y=(v)=>pcy-(v-vcy)*scale;
+  lastRender.polezero={cx:vcx,cy:vcy,halfSpan,scale,pcx,pcy,px0,px1,py0,py1};
+  ctx.save();ctx.beginPath();ctx.rect(px0,py0,sizeX,sizeY);ctx.clip();
+  ctx.strokeStyle=SC.grid;ctx.lineWidth=1;
+  for(const v of linTicks(vcx-halfSpan,vcx+halfSpan,4)){
+    ctx.beginPath();ctx.moveTo(X(v),py0);ctx.lineTo(X(v),py1);ctx.stroke();
+  }
+  for(const v of linTicks(vcy-halfSpan,vcy+halfSpan,4)){
+    ctx.beginPath();ctx.moveTo(px0,Y(v));ctx.lineTo(px1,Y(v));ctx.stroke();
+  }
+  ctx.save();ctx.fillStyle=SC.bad;ctx.globalAlpha=.08;
+  ctx.fillRect(Math.max(px0,X(0)),py0,px1-Math.max(px0,X(0)),py1-py0);
+  ctx.restore();
+  ctx.strokeStyle=SC.gridMajor;ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.moveTo(X(0),py0);ctx.lineTo(X(0),py1);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(px0,Y(0));ctx.lineTo(px1,Y(0));ctx.stroke();
+  for(const p of poles)crossMarker(ctx,X(p[0]),Y(p[1]),7,p[0]<0?SC.good:SC.bad);
+  for(const z of zeros)circleMarker(ctx,X(z[0]),Y(z[1]),6,SC.secondary,false);
+  if(tunedW!=null)tunedMarker(ctx,X(0),Y(tunedW),'');
+  ctx.restore();
+  axisLabel(ctx,'Re',px1-10,pcy+13);
+  axisLabel(ctx,'Im',pcx+16,py0+8);
+  drawLegend(ctx,px0+4,py1-10,[{color:SC.good,label:'pole (×)'},{color:SC.secondary,label:'zero (○)'}]);
+}
+
+/* =========================================================================
+   5. UI STATE + PIPELINE
+   ========================================================================= */
+const els={
+  ctrlModeSeg:document.getElementById('ctrlModeSeg'),
+  ctrlPidFields:document.getElementById('ctrlPidFields'),
+  ctrlLaplaceFields:document.getElementById('ctrlLaplaceFields'),
+  kp:document.getElementById('kp'), ki:document.getElementById('ki'), kd:document.getElementById('kd'),
+  ctrlPreset:document.getElementById('ctrlPreset'),
+  ctrlLaplaceInput:document.getElementById('ctrlLaplaceInput'),
+  ctrlReadout:document.getElementById('ctrlReadout'),
+  plantPreset:document.getElementById('plantPreset'),
+  plantInput:document.getElementById('plantInput'),
+  plantReadout:document.getElementById('plantReadout'),
+  sigModeSeg:document.getElementById('sigModeSeg'),
+  amp:document.getElementById('amp'), freq:document.getElementById('freq'), dur:document.getElementById('dur'),
+  freqField:document.getElementById('freqField'), freqSliderRow:document.getElementById('freqSliderRow'),
+  freqSlider:document.getElementById('freqSlider'), durAutoBtn:document.getElementById('durAutoBtn'),
+  statusStrip:document.getElementById('statusStrip'),
+  errorBanner:document.getElementById('errorBanner'),
+  timeSub:document.getElementById('timeSub'),
+};
+const state={ctrlMode:'pid', sigType:'step', durAuto:true};
+
+PLANT_PRESETS.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=p.name;els.plantPreset.appendChild(o);});
+els.plantPreset.selectedIndex=2;
+CTRL_PRESETS.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=p.name;els.ctrlPreset.appendChild(o);});
+els.ctrlPreset.selectedIndex=3;
+
+function polyToStr(p,ascendPow){
+  // p is descending-order coeff array; produce a readable expression
+  const n=p.length-1;
+  const terms=[];
+  for(let i=0;i<p.length;i++){
+    const c=p[i], pow=n-i;
+    if(Math.abs(c)<1e-12)continue;
+    const c3=Math.round(c*1000)/1000;
+    let term;
+    if(pow===0)term=`${c3}`;
+    else if(pow===1)term=`${c3===1?'':(c3===-1?'-':c3+'')}s`;
+    else term=`${c3===1?'':(c3===-1?'-':c3+'')}s^${pow}`;
+    terms.push({term,c:c3});
+  }
+  if(terms.length===0)return '0';
+  let out=terms[0].term;
+  for(let i=1;i<terms.length;i++){
+    out+= terms[i].c>=0? ' + '+terms[i].term.replace(/^-/,'') : ' - '+terms[i].term.replace(/^-/,'');
+  }
+  return out;
+}
+function tfToStr(tf){
+  const denIsOne=tf.den.length===1&&Math.abs(tf.den[0]-1)<1e-12;
+  const numStr=polyToStr(tf.num);
+  if(denIsOne)return numStr;
+  return `(${numStr}) / (${polyToStr(tf.den)})`;
+}
+
+function getControllerTF(){
+  if(state.ctrlMode==='pid'){
+    const Kp=parseFloat(els.kp.value)||0, Ki=parseFloat(els.ki.value)||0, Kd=parseFloat(els.kd.value)||0;
+    // C(s) = (Kd s^2 + Kp s + Ki)/s ; if Ki==0 and Kd==0 collapse to pure gain
+    if(Math.abs(Ki)<1e-12&&Math.abs(Kd)<1e-12)return {num:[Kp],den:[1]};
+    return {num:polyTrim([Kd,Kp,Ki]),den:[1,0]};
+  }
+  return parseTF(els.ctrlLaplaceInput.value);
+}
+function getPlantTF(){return parseTF(els.plantInput.value);}
+
+let lastData=null;
+function redrawAll(){
+  if(!lastData)return;
+  const d=lastData;
+  renderTime(document.getElementById('cvTime'),d.sim,state.sigType,views.time);
+  renderPoleZero(document.getElementById('cvPZ'),d.closedPoles,d.closedZeros,views.polezero,d.tuned.w);
+  renderBodeMag(document.getElementById('cvBodeMag'),{ws:d.ws,mags:d.mags,wgc:d.wgc,tuned:d.tuned},views.bodemag);
+  renderBodePhase(document.getElementById('cvBodePhase'),{ws:d.ws,phases:d.phases,wpc:d.wpc,tuned:d.tuned},views.bodephase);
+  renderNyquist(document.getElementById('cvNyquist'),{re:d.re,im:d.im,tuned:d.tuned},views.nyquist);
+  renderRootLocus(document.getElementById('cvRootLocus'),d.rl,d.openPoles,d.openZeros,d.closedPoles,d.stable,views.rootlocus,d.tuned.w);
+}
+
+function computeAll(){
+  els.errorBanner.classList.remove('show');
+  let C,P;
+  try{
+    C=getControllerTF();
+    els.ctrlReadout.textContent='C(s) = '+tfToStr(C);
+  }catch(e){
+    showError('Controller C(s): '+e.message);
+    els.ctrlReadout.textContent='C(s) = —';
+    return;
+  }
+  try{
+    P=getPlantTF();
+    els.plantReadout.textContent='P(s) = '+tfToStr(P);
+  }catch(e){
+    showError('Process P(s): '+e.message);
+    els.plantReadout.textContent='P(s) = —';
+    return;
+  }
+
+  const L={num:polyMul(C.num,P.num), den:polyMul(C.den,P.den)};
+  const T={num:L.num, den:polyAdd(L.den,L.num)};
+  if(polyTrim(T.den).every(v=>Math.abs(v)<1e-12)){showError('Closed-loop denominator is identically zero — check your transfer functions.');return;}
+
+  let closedPoles;
+  try{ closedPoles=polyRoots(T.den); }
+  catch(e){ showError('Could not compute closed-loop poles: '+e.message); return; }
+  const closedZeros=polyRoots(T.num);
+  const openPoles=polyRoots(L.den);
+  const openZeros=polyRoots(L.num);
+  const maxRe=closedPoles.length?Math.max(...closedPoles.map(p=>p[0])):0;
+  const stable=maxRe<1e-7;
+
+  // dominant pole = stable-side pole with largest (least negative) real part; if unstable, most positive
+  let dominant=closedPoles[0];
+  if(closedPoles.length){
+    dominant=closedPoles.reduce((a,b)=> (b[0]>a[0])?b:a );
+  }
+
+  // ---- frequency response for Bode / Nyquist (open loop L) ----
+  const N_W=320;
+  const wMin=1e-2, wMax=1e3;
+  const ws=[]; for(let i=0;i<N_W;i++)ws.push(wMin*Math.pow(wMax/wMin,i/(N_W-1)));
+  const Lc=ws.map(w=>freqResp(L.num,L.den,w));
+  const mags=Lc.map(c=>20*Math.log10(Math.max(cAbs(c),1e-12)));
+  let phasesRaw=Lc.map(c=>cArg(c)*180/Math.PI);
+  const phases=unwrapDeg(phasesRaw);
+  // gain crossover: first w where mag crosses 0 dB (descending)
+  let wgc=null, wpc=null, gm=null, pm=null;
+  for(let i=1;i<ws.length;i++){
+    if((mags[i-1]-0)*(mags[i]-0)<0){
+      const t=(0-mags[i-1])/(mags[i]-mags[i-1]);
+      wgc=ws[i-1]+t*(ws[i]-ws[i-1]);
+      const ph=phases[i-1]+t*(phases[i]-phases[i-1]);
+      pm=180+ph;
+      break;
+    }
+  }
+  for(let i=1;i<ws.length;i++){
+    if((phases[i-1]+180)*(phases[i]+180)<0){
+      const t=(-180-phases[i-1])/(phases[i]-phases[i-1]);
+      wpc=ws[i-1]+t*(ws[i]-ws[i-1]);
+      const mg=mags[i-1]+t*(mags[i]-mags[i-1]);
+      gm=-mg;
+      break;
+    }
+  }
+  const re=Lc.map(c=>c[0]), im=Lc.map(c=>c[1]);
+
+  // ---- tuned-frequency marker (from the Test-input frequency control) ----
+  const tunedHz=Math.max(0.001,parseFloat(els.freq.value)||0.5);
+  const wTuned=2*Math.PI*tunedHz;
+  const LcTuned=freqResp(L.num,L.den,wTuned);
+  const tuned={
+    w:wTuned, hz:(Math.round(tunedHz*1000)/1000).toString(),
+    mag:20*Math.log10(Math.max(cAbs(LcTuned),1e-12)),
+    phase:interpAtLogW(ws,phases,wTuned),
+    re:LcTuned[0], im:LcTuned[1]
+  };
+
+  // ---- root locus of L(s) ----
+  let kMaxLocus=1000;
+  const rl=rootLocus(L.num,L.den,kMaxLocus,90);
+
+  // ---- time-domain simulation ----
+  const ss=buildStateSpace(T.num,T.den);
+  const amp=parseFloat(els.amp.value)||0;
+  const freq=Math.max(0.001,parseFloat(els.freq.value)||0.5);
+  let uFunc;
+  if(state.sigType==='step')uFunc=t=>t>=0?amp:0;
+  else if(state.sigType==='ramp')uFunc=t=>t>=0?amp*t:0;
+  else uFunc=t=>amp*Math.sin(2*Math.PI*freq*t);
+
+  if(state.durAuto){
+    let tAuto;
+    if(state.sigType==='sine')tAuto=Math.min(60,Math.max(6/freq,4));
+    else if(!stable){
+      const growth=Math.max(maxRe,0.05);
+      tAuto=Math.min(15,Math.max(2,4/growth));
+    } else {
+      const slowest=Math.max(Math.abs(dominant[0]),0.05);
+      tAuto=Math.min(60,Math.max(3,5/slowest));
+    }
+    els.dur.value=Math.round(tAuto*100)/100;
+  }
+  const tEnd=Math.max(0.1,parseFloat(els.dur.value)||10);
+  const steps=Math.min(4000,Math.max(200,Math.round(tEnd*120)));
+  const sim=simulate(ss,uFunc,tEnd,steps);
+
+  // ---- status chips ----
+  renderStatus({stable,dominant,gm,pm,wgc,wpc,improper:ss.improper});
+
+  // ---- cache + draw panels (current pan/zoom views are preserved) ----
+  els.timeSub.textContent=state.sigType+', r→y';
+  lastData={sim,closedPoles,closedZeros,openPoles,openZeros,ws,mags,phases,wgc,wpc,re,im,rl,stable,tuned};
+  redrawAll();
+}
+
+function renderStatus({stable,dominant,gm,pm,wgc,wpc,improper}){
+  els.statusStrip.innerHTML='';
+  const add=(cls,html)=>{const d=document.createElement('span');d.className='chip '+cls;d.innerHTML=html;els.statusStrip.appendChild(d);};
+  add(stable?'good':'bad', '<span class="dot"></span>Closed loop: '+(stable?'STABLE':'UNSTABLE'));
+  if(dominant)add('', 'Dominant pole: '+dominant[0].toFixed(3)+(dominant[1]>=0?' + ':' − ')+Math.abs(dominant[1]).toFixed(3)+'i');
+  add(gm==null?'warn':(gm>6?'good':'warn'), 'Gain margin: '+(gm==null?'∞ (never crosses −180°)':gm.toFixed(1)+' dB @ '+wpc.toFixed(2)+' rad/s'));
+  add(pm==null?'warn':(pm>45?'good':'warn'), 'Phase margin: '+(pm==null?'n/a (never crosses 0 dB)':pm.toFixed(1)+'° @ '+wgc.toFixed(2)+' rad/s'));
+  if(improper)add('warn','Closed-loop TF improper — numerator truncated');
+}
+function showError(msg){els.errorBanner.textContent=msg;els.errorBanner.classList.add('show');}
+
+/* ---- wiring ---- */
+function segWire(container,onSelect){
+  container.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      container.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      onSelect(btn);
+    });
+  });
+}
+segWire(els.ctrlModeSeg,(btn)=>{
+  state.ctrlMode=btn.dataset.mode;
+  els.ctrlPidFields.style.display=state.ctrlMode==='pid'?'':'none';
+  els.ctrlLaplaceFields.style.display=state.ctrlMode==='laplace'?'':'none';
+  if(state.ctrlMode==='laplace'){
+    try{
+      const Kp=parseFloat(els.kp.value)||0, Ki=parseFloat(els.ki.value)||0, Kd=parseFloat(els.kd.value)||0;
+      els.ctrlLaplaceInput.value=tfToStr({num:polyTrim([Kd,Kp,Ki]),den:[1,0]});
+    }catch(e){}
+  }
+  computeAll();
+});
+segWire(els.sigModeSeg,(btn)=>{
+  state.sigType=btn.dataset.sig;
+  state.durAuto=true;
+  computeAll();
+});
+
+els.ctrlPreset.addEventListener('change',()=>{
+  els.ctrlLaplaceInput.value=CTRL_PRESETS[els.ctrlPreset.value].expr;
+  computeAll();
+});
+els.plantPreset.addEventListener('change',()=>{
+  els.plantInput.value=PLANT_PRESETS[els.plantPreset.value].expr;
+  computeAll();
+});
+els.freqSlider.addEventListener('input',()=>{
+  const f=Math.pow(10,parseFloat(els.freqSlider.value));
+  els.freq.value=Math.round(f*1000)/1000;
+  state.durAuto=true;
+  computeAll();
+});
+els.freq.addEventListener('input',()=>{
+  const f=Math.max(0.01,parseFloat(els.freq.value)||0.5);
+  els.freqSlider.value=Math.log10(f);
+  state.durAuto=true;
+  computeAll();
+});
+els.dur.addEventListener('input',()=>{state.durAuto=false;computeAll();});
+els.durAutoBtn.addEventListener('click',()=>{state.durAuto=true;computeAll();});
+
+[els.kp,els.ki,els.kd,els.ctrlLaplaceInput,els.plantInput,els.amp].forEach(inp=>{
+  inp.addEventListener('input',()=>computeAll());
+});
+
+/* ---- panel drag & reorder ---- */
+const grid=document.getElementById('panelsGrid');
+let dragEl=null;
+grid.querySelectorAll('.drag-handle').forEach(handle=>{
+  handle.addEventListener('dragstart',(e)=>{dragEl=handle.closest('.panel');e.dataTransfer.effectAllowed='move';});
+  handle.addEventListener('dragend',()=>{dragEl=null;grid.querySelectorAll('.panel').forEach(p=>p.classList.remove('drag-over'));savePanelOrder();});
+});
+grid.querySelectorAll('.panel').forEach(panel=>{
+  panel.addEventListener('dragover',(e)=>{
+    e.preventDefault();
+    if(!dragEl||dragEl===panel)return;
+    panel.classList.add('drag-over');
+  });
+  panel.addEventListener('dragleave',()=>panel.classList.remove('drag-over'));
+  panel.addEventListener('drop',(e)=>{
+    e.preventDefault();
+    panel.classList.remove('drag-over');
+    if(!dragEl||dragEl===panel)return;
+    const panels=Array.from(grid.children);
+    const from=panels.indexOf(dragEl), to=panels.indexOf(panel);
+    if(from<to)panel.after(dragEl); else panel.before(dragEl);
+  });
+  panel.querySelectorAll('.reorder-btns button[data-dir]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const dir=parseInt(btn.dataset.dir,10);
+      const sibling=dir<0?panel.previousElementSibling:panel.nextElementSibling;
+      if(!sibling)return;
+      if(dir<0)grid.insertBefore(panel,sibling); else grid.insertBefore(sibling,panel);
+      savePanelOrder();
+    });
+  });
+});
+function savePanelOrder(){
+  try{
+    const order=Array.from(grid.children).map(p=>p.dataset.id);
+    localStorage.setItem('loopbench-panel-order',JSON.stringify(order));
+  }catch(e){}
+}
+function restorePanelOrder(){
+  try{
+    const order=JSON.parse(localStorage.getItem('loopbench-panel-order')||'null');
+    if(!order)return;
+    const map={};
+    grid.querySelectorAll('.panel').forEach(p=>map[p.dataset.id]=p);
+    for(const id of order)if(map[id])grid.appendChild(map[id]);
+  }catch(e){}
+}
+restorePanelOrder();
+
+/* ---- pan / zoom wiring ---- */
+attachRectZoomPan(document.getElementById('cvTime'),'time',{minXW:0.05,maxXW:1e6,minYW:1e-4,maxYW:1e9});
+attachRectZoomPan(document.getElementById('cvBodeMag'),'bodemag',{minXW:0.1,maxXW:20,minYW:0.5,maxYW:1e4});
+attachRectZoomPan(document.getElementById('cvBodePhase'),'bodephase',{minXW:0.1,maxXW:20,minYW:1,maxYW:5000});
+attachDiscZoomPan(document.getElementById('cvNyquist'),'nyquist',{minSpan:0.02,maxSpan:1e6});
+attachDiscZoomPan(document.getElementById('cvRootLocus'),'rootlocus',{minSpan:0.02,maxSpan:1e6});
+attachDiscZoomPan(document.getElementById('cvPZ'),'polezero',{minSpan:0.02,maxSpan:1e6});
+
+document.querySelectorAll('.reset-view').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    views[btn.dataset.reset]=null;
+    redrawAll();
+  });
+});
+
+/* ---- resize handling ---- */
+let resizeTimer=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(computeAll,120);
+});
+
+computeAll();
+</script>
