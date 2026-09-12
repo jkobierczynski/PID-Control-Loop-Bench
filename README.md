@@ -10,6 +10,14 @@ no build step, and no network dependency beyond loading the two Google Fonts
 (IBM Plex Sans / IBM Plex Mono) — the page works fine offline once fonts are
 cached, and still functions (with fallback system fonts) with no network at all.
 
+## Screenshot
+
+![PID Control Loop Bench](PID_Control_Loop_Bench.jpg)
+
+## Made with Claude
+
+Made using Claude Sonnet 5 High
+
 ## Is the math actually happening in real time?
 
 Yes. Every keystroke or control change (Kp/Ki/Kd, a Laplace expression, the
