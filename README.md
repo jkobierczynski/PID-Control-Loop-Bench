@@ -14,7 +14,7 @@ cached, and still functions (with fallback system fonts) with no network at all.
 
 ## Screenshot
 
-![PID_Control_Loop_Bench.jpg](https://jurgenkobierczynski.com/PIDControlLoopBench/loop-bench.html)
+[PID_Control_Loop_Bench.jpg](https://jurgenkobierczynski.com/PIDControlLoopBench/loop-bench.html)
 
 ## Screenshot
 
