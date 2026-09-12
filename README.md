@@ -12,9 +12,7 @@ cached, and still functions (with fallback system fonts) with no network at all.
 
 ## LIVE demo
 
-## Screenshot
-
-[PID_Control_Loop_Bench.jpg](https://jurgenkobierczynski.com/PIDControlLoopBench/loop-bench.html)
+[PID Control Loop Bench](https://jurgenkobierczynski.com/PIDControlLoopBench/loop-bench.html)
 
 ## Screenshot
 
