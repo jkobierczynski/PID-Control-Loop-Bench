@@ -574,6 +574,70 @@ function rootLocus(numL,denL,kMax,steps){
   }
   return branches;
 }
+/* Adaptively densify a root-locus sweep: wherever consecutive samples on any
+   branch are farther apart than `threshold` (in the complex plane), bisect
+   the gain interval between them, recompute the roots there, and splice a
+   matched point into every branch. This is what keeps breakaway/break-in
+   points — where two branches meet and peel apart — looking like a smooth
+   curve instead of a coarse straight-line jump. Bounded by maxPoints so a
+   pathological case can't blow up render time. */
+function refineLocus(branches,denL,numL,threshold,maxPoints,maxRadius){
+  if(!branches.length)return;
+  let i=0;
+  while(i<branches[0].length-1){
+    if(branches[0].length>=maxPoints)break;
+    // Skip regions that are already well outside the area anyone will look
+    // at (e.g. a branch racing off toward infinity at high K) — refining
+    // those only wastes the point budget and slows recompute.
+    const allFar=branches.every(br=>Math.max(Math.hypot(br[i].re,br[i].im),Math.hypot(br[i+1].re,br[i+1].im))>maxRadius);
+    if(allFar){i++;continue;}
+    let maxD=0;
+    for(const br of branches)maxD=Math.max(maxD,Math.hypot(br[i].re-br[i+1].re,br[i].im-br[i+1].im));
+    if(maxD<=threshold){i++;continue;}
+    const K0=branches[0][i].K,K1=branches[0][i+1].K;
+    const Kuse=(K0<=1e-9)?(K0+K1)/2:Math.sqrt(K0*K1);
+    if(!(Kuse>K0)||!(Kuse<K1)){i++;continue;} // float underflow guard
+    const roots=polyRoots(polyAdd(denL,polyScale(numL,Kuse)));
+    if(roots.length!==branches.length){i++;continue;}
+    const used=new Array(roots.length).fill(false);
+    for(let bi=0;bi<branches.length;bi++){
+      const a=branches[bi][i],b=branches[bi][i+1];
+      const px=(a.re+b.re)/2,py=(a.im+b.im)/2;
+      let best=-1,bestD=Infinity;
+      for(let ri=0;ri<roots.length;ri++){
+        if(used[ri])continue;
+        const d=Math.hypot(roots[ri][0]-px,roots[ri][1]-py);
+        if(d<bestD){bestD=d;best=ri;}
+      }
+      used[best]=true;
+      branches[bi].splice(i+1,0,{K:Kuse,re:roots[best][0],im:roots[best][1]});
+    }
+    // don't advance i — re-check the new, smaller left-hand sub-gap first
+  }
+}
+/* Shared view-scale estimate for the root-locus plot: based on the actual
+   poles/zeros/current-design spread, plus a trimmed (90th-percentile) look
+   at the branches themselves so a breakaway point isn't clipped out of the
+   default view — while one branch racing off to infinity at very high K
+   still can't blow the scale out, since it's trimmed away as an outlier. */
+function estimateLocusHalfSpan(poles,zeros,curPoles,rl){
+  let spread=1;
+  for(const p of poles)spread=Math.max(spread,Math.abs(p[0]),Math.abs(p[1]));
+  for(const z of zeros)spread=Math.max(spread,Math.abs(z[0]),Math.abs(z[1]));
+  for(const p of curPoles)spread=Math.max(spread,Math.abs(p[0]),Math.abs(p[1]));
+  const branchVals=[];
+  for(const br of rl)for(const pt of br)branchVals.push(Math.max(Math.abs(pt.re),Math.abs(pt.im)));
+  branchVals.sort((a,b)=>a-b);
+  // A log-spaced gain sweep spends a large share of its steps at high K, so
+  // any branch that runs off to infinity (whenever #poles > #zeros) already
+  // dominates the top ~10-15% of samples even before adaptive refinement
+  // adds more points there. The 75th percentile sits below where that
+  // runaway tail starts in every case tested, while still catching a
+  // genuine complex breakaway bulge that reaches past the raw pole/zero
+  // spread.
+  const trimmed=branchVals.length?branchVals[Math.floor(branchVals.length*0.75)]:0;
+  return Math.max(spread*1.5,trimmed*1.3,0.75);
+}
 
 /* =========================================================================
    2. PRESETS
@@ -638,7 +702,12 @@ function linTicks(min,max,count){
   return ticks;
 }
 function fmtNum(v){
-  if(v===0)return '0';
+  // Root-finding on real-coefficient polynomials routinely leaves a
+  // vanishingly small (~1e-30) imaginary/real residue on what is
+  // mathematically an exact zero (e.g. a pole placed exactly at the
+  // origin). Below this floor it's numerical noise, not data, so show it
+  // as a clean "0" instead of e.g. "-6.0e-36".
+  if(v===0||Math.abs(v)<1e-9)return '0';
   const a=Math.abs(v);
   if(a>=1000||a<0.001)return v.toExponential(1);
   return (Math.round(v*1000)/1000).toString();
@@ -652,6 +721,11 @@ const lin=(domain,range)=>(v)=>range[0]+(v-domain[0])/(domain[1]-domain[0])*(ran
    zoom never distorts the complex plane. views[key]===null means "auto-fit". */
 const views={time:null,polezero:null,bodemag:null,bodephase:null,nyquist:null,rootlocus:null};
 const lastRender={};
+/* Per-panel hover state: {mx,my} in canvas-local CSS-pixel coordinates (same
+   space as lastRender's px0/px1/py0/py1), or null when the pointer isn't
+   over that panel. Updated by attachRectZoomPan/attachDiscZoomPan below and
+   consumed by each render function to draw a snapped crosshair + readout. */
+const hover={time:null,polezero:null,bodemag:null,bodephase:null,nyquist:null,rootlocus:null};
 function clampRange(a,b,minW,maxW){
   let w=b-a;
   if(w<minW){const c=(a+b)/2;a=c-minW/2;b=c+minW/2;}
@@ -701,14 +775,16 @@ function attachRectZoomPan(canvas,key,limits){
     };
   });
   canvas.addEventListener('pointermove',(e)=>{
-    if(!drag)return;
     const rect=canvas.getBoundingClientRect();
     const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    hover[key]={mx,my};
+    if(!drag){renderOne(key);return;}
     const nx0=drag.ax-(mx-drag.px0)/(drag.px1-drag.px0)*drag.w;
     const ny0=drag.ay-(drag.py1-my)/(drag.py1-drag.py0)*drag.h;
     views[key]={x0:nx0,x1:nx0+drag.w,y0:ny0,y1:ny0+drag.h};
     redrawAll();
   });
+  canvas.addEventListener('pointerleave',()=>{hover[key]=null;renderOne(key);});
   const end=(e)=>{if(drag){drag=null;canvas.classList.remove('panning');try{canvas.releasePointerCapture(e.pointerId);}catch(err){}}};
   canvas.addEventListener('pointerup',end);
   canvas.addEventListener('pointercancel',end);
@@ -739,14 +815,16 @@ function attachDiscZoomPan(canvas,key,limits){
     drag={ax:lr.cx+(mx-lr.pcx)/lr.scale, ay:lr.cy-(my-lr.pcy)/lr.scale, scale:lr.scale, pcx:lr.pcx, pcy:lr.pcy, halfSpan:lr.halfSpan};
   });
   canvas.addEventListener('pointermove',(e)=>{
-    if(!drag)return;
     const rect=canvas.getBoundingClientRect();
     const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    hover[key]={mx,my};
+    if(!drag){renderOne(key);return;}
     const ncx=drag.ax-(mx-drag.pcx)/drag.scale;
     const ncy=drag.ay+(my-drag.pcy)/drag.scale;
     views[key]={cx:ncx,cy:ncy,halfSpan:drag.halfSpan};
     redrawAll();
   });
+  canvas.addEventListener('pointerleave',()=>{hover[key]=null;renderOne(key);});
   const end=(e)=>{if(drag){drag=null;canvas.classList.remove('panning');try{canvas.releasePointerCapture(e.pointerId);}catch(err){}}};
   canvas.addEventListener('pointerup',end);
   canvas.addEventListener('pointercancel',end);
@@ -826,6 +904,39 @@ function diamondMarker(ctx,x,y,r,color){
   ctx.beginPath();ctx.moveTo(x,y-r);ctx.lineTo(x+r,y);ctx.lineTo(x,y+r);ctx.lineTo(x-r,y);ctx.closePath();ctx.fill();
   ctx.restore();
 }
+/* Hover crosshair + coordinate readout, shared by every panel renderer.
+   `b` is {px0,px1,py0,py1} — the plot's clipped frame bounds — used both to
+   span the crosshair lines and to keep the readout box from spilling past
+   the frame edge. */
+function drawCrosshair(ctx,px,py,b){
+  ctx.save();
+  ctx.strokeStyle=SC.dim;ctx.setLineDash([3,3]);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(px,b.py0);ctx.lineTo(px,b.py1);ctx.moveTo(b.px0,py);ctx.lineTo(b.px1,py);ctx.stroke();
+  ctx.restore();
+  ctx.save();ctx.fillStyle=SC.text;ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();ctx.restore();
+}
+function drawHoverBox(ctx,px,py,lines,b){
+  ctx.save();
+  ctx.font='500 10.5px "IBM Plex Mono",monospace';
+  const padX=6,padY=5,lh=13;
+  let boxW=0;
+  for(const l of lines)boxW=Math.max(boxW,ctx.measureText(l).width);
+  boxW+=padX*2;
+  const boxH=lines.length*lh+padY*2-3;
+  let bx=px+10, by=py-boxH-10;
+  if(bx+boxW>b.px1)bx=px-boxW-10;
+  if(bx<b.px0)bx=b.px0+2;
+  if(by<b.py0)by=py+10;
+  if(by+boxH>b.py1)by=b.py1-boxH-2;
+  ctx.fillStyle='rgba(6,14,11,0.94)';
+  ctx.strokeStyle=SC.axis;ctx.lineWidth=1;
+  ctx.beginPath();
+  if(ctx.roundRect)ctx.roundRect(bx,by,boxW,boxH,3);else ctx.rect(bx,by,boxW,boxH);
+  ctx.fill();ctx.stroke();
+  ctx.fillStyle=SC.text;ctx.textAlign='left';ctx.textBaseline='top';
+  lines.forEach((l,i)=>ctx.fillText(l,bx+padX,by+padY+i*lh));
+  ctx.restore();
+}
 function emptyState(ctx,w,h,msg){
   ctx.save();ctx.fillStyle=SC.dim;ctx.font='500 12px "IBM Plex Mono",monospace';
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(msg,w/2,h/2);ctx.restore();
@@ -834,7 +945,7 @@ function emptyState(ctx,w,h,msg){
 /* =========================================================================
    4. PANEL RENDERERS
    ========================================================================= */
-function renderTime(canvas,data,sigType,view){
+function renderTime(canvas,data,sigType,view,hoverPix){
   const {ctx,w,h}=fitCanvas(canvas);
   if(!data){emptyState(ctx,w,h,'no data');return;}
   const pad={l:44,r:14,t:14,b:26};
@@ -866,11 +977,20 @@ function renderTime(canvas,data,sigType,view){
   const outPts=ts.map((t,i)=>[X(t),Y(ys[i])]);
   drawTrace(ctx,inPts,SC.input,{width:1.6,dash:[5,4],alpha:.85});
   drawTrace(ctx,outPts,SC.output,{width:2.1,glow:3});
+  axisLabel(ctx,'t (s)',px1-4,py1-8,'right');
+  if(hoverPix&&hoverPix.mx>=px0&&hoverPix.mx<=px1){
+    const dt=(ts.length>1)?(ts[ts.length-1]-ts[0])/(ts.length-1):1;
+    let idx=Math.round((x0+(hoverPix.mx-px0)/(px1-px0)*(x1-x0)-ts[0])/dt);
+    idx=Math.max(0,Math.min(ts.length-1,idx));
+    const hx=X(ts[idx]),hy=Y(ys[idx]);
+    drawCrosshair(ctx,hx,hy,{px0,px1,py0,py1});
+    drawHoverBox(ctx,hx,hy,[`t = ${fmtNum(ts[idx])} s`,`y = ${fmtNum(ys[idx])}`,`r = ${fmtNum(us[idx])}`],{px0,px1,py0,py1});
+  }
   ctx.restore();
   drawLegend(ctx,px0+4,py0+14,[{color:SC.input,label:'reference r(t)'},{color:SC.output,label:'output y(t)'}]);
 }
 
-function renderBodeMag(canvas,fr,view){
+function renderBodeMag(canvas,fr,view,hoverPix){
   const {ctx,w,h}=fitCanvas(canvas);
   if(!fr){emptyState(ctx,w,h,'no data');return;}
   const pad={l:46,r:14,t:14,b:26};
@@ -912,9 +1032,19 @@ function renderBodeMag(canvas,fr,view){
     if(lw>=logMin&&lw<=logMax&&fr.tuned.mag>=yMin&&fr.tuned.mag<=yMax)
       tunedMarker(ctx,X(lw),Y(fr.tuned.mag),fr.tuned.hz+' Hz');
   }
+  axisLabel(ctx,'|L| (dB)',px0+4,py0+10,'left');
+  axisLabel(ctx,'ω (rad/s)',px1-4,py1-8,'right');
+  if(hoverPix&&hoverPix.mx>=px0&&hoverPix.mx<=px1){
+    const lw=logMin+(hoverPix.mx-px0)/(px1-px0)*(logMax-logMin);
+    const wH=Math.pow(10,lw);
+    const magH=interpAtLogW(ws,mags,wH);
+    const hx=X(lw),hy=Y(magH);
+    drawCrosshair(ctx,hx,hy,{px0,px1,py0,py1});
+    drawHoverBox(ctx,hx,hy,[`ω = ${fmtNum(wH)} rad/s`,`f = ${fmtNum(wH/(2*Math.PI))} Hz`,`|L| = ${fmtNum(magH)} dB`],{px0,px1,py0,py1});
+  }
   ctx.restore();
 }
-function renderBodePhase(canvas,fr,view){
+function renderBodePhase(canvas,fr,view,hoverPix){
   const {ctx,w,h}=fitCanvas(canvas);
   if(!fr){emptyState(ctx,w,h,'no data');return;}
   const pad={l:46,r:14,t:14,b:26};
@@ -957,9 +1087,18 @@ function renderBodePhase(canvas,fr,view){
     if(lw>=logMin&&lw<=logMax&&fr.tuned.phase>=yMin&&fr.tuned.phase<=yMax)
       tunedMarker(ctx,X(lw),Y(fr.tuned.phase),fr.tuned.hz+' Hz');
   }
+  axisLabel(ctx,'ω (rad/s)',px1-4,py1-8,'right');
+  if(hoverPix&&hoverPix.mx>=px0&&hoverPix.mx<=px1){
+    const lw=logMin+(hoverPix.mx-px0)/(px1-px0)*(logMax-logMin);
+    const wH=Math.pow(10,lw);
+    const phH=interpAtLogW(ws,phases,wH);
+    const hx=X(lw),hy=Y(phH);
+    drawCrosshair(ctx,hx,hy,{px0,px1,py0,py1});
+    drawHoverBox(ctx,hx,hy,[`ω = ${fmtNum(wH)} rad/s`,`f = ${fmtNum(wH/(2*Math.PI))} Hz`,`∠L = ${fmtNum(phH)}°`],{px0,px1,py0,py1});
+  }
   ctx.restore();
 }
-function renderNyquist(canvas,fr,view){
+function renderNyquist(canvas,fr,view,hoverPix){
   const {ctx,w,h}=fitCanvas(canvas);
   if(!fr){emptyState(ctx,w,h,'no data');return;}
   const pad={l:40,r:16,t:14,b:26};
@@ -997,11 +1136,29 @@ function renderNyquist(canvas,fr,view){
   crossMarker(ctx,X(-1),Y(0),6,SC.bad);
   axisLabel(ctx,'-1',X(-1),Y(0)-12);
   if(fr.tuned)tunedMarker(ctx,X(fr.tuned.re),Y(fr.tuned.im),fr.tuned.hz+' Hz');
+  if(hoverPix&&hoverPix.mx>=px0&&hoverPix.mx<=px1&&hoverPix.my>=py0&&hoverPix.my<=py1){
+    const {mx,my}=hoverPix;
+    let bestI=-1,bestSign=1,bestD=Infinity;
+    for(let i=0;i<re.length;i++){
+      const xx=X(re[i]);
+      const dPos=Math.hypot(xx-mx,Y(im[i])-my);
+      const dNeg=Math.hypot(xx-mx,Y(-im[i])-my);
+      if(dPos<bestD){bestD=dPos;bestI=i;bestSign=1;}
+      if(dNeg<bestD){bestD=dNeg;bestI=i;bestSign=-1;}
+    }
+    if(bestI>=0){
+      const hx=X(re[bestI]),hy=Y(bestSign*im[bestI]);
+      drawCrosshair(ctx,hx,hy,{px0,px1,py0,py1});
+      const lines=[`Re = ${fmtNum(re[bestI])}`,`Im = ${fmtNum(bestSign*im[bestI])}`];
+      if(fr.ws)lines.unshift(`ω = ${fmtNum(fr.ws[bestI])} rad/s`);
+      drawHoverBox(ctx,hx,hy,lines,{px0,px1,py0,py1});
+    }
+  }
   ctx.restore();
-  axisLabel(ctx,'Re',px1-10,pcy+13);
-  axisLabel(ctx,'Im',pcx+16,py0+8);
+  axisLabel(ctx,'Re (s⁻¹)',px1-4,pcy+13,'right');
+  axisLabel(ctx,'Im (s⁻¹)',pcx+6,py0+8,'left');
 }
-function renderRootLocus(canvas,rl,poles,zeros,curPoles,stable,view,tunedW){
+function renderRootLocus(canvas,rl,poles,zeros,curPoles,stable,view,tunedW,homeSpan,hoverPix){
   const {ctx,w,h}=fitCanvas(canvas);
   if(!rl){emptyState(ctx,w,h,'no data');return;}
   const pad={l:44,r:16,t:14,b:26};
@@ -1011,15 +1168,14 @@ function renderRootLocus(canvas,rl,poles,zeros,curPoles,stable,view,tunedW){
   let vcx=0,vcy=0,halfSpan;
   if(view){vcx=view.cx;vcy=view.cy;halfSpan=view.halfSpan;}
   else{
-    // Scale the view to the poles/zeros/current design — a locus branch running
-    // off to an asymptote at high K should leave the frame, not compress it.
-    let spread=1;
-    for(const p of poles)spread=Math.max(spread,Math.abs(p[0]),Math.abs(p[1]));
-    for(const z of zeros)spread=Math.max(spread,Math.abs(z[0]),Math.abs(z[1]));
-    for(const p of curPoles)spread=Math.max(spread,Math.abs(p[0]),Math.abs(p[1]));
-    halfSpan=Math.max(spread*1.7,0.75);
+    // Scale the view to the poles/zeros/current design, plus a trimmed look at
+    // the branches themselves, so a breakaway point isn't clipped out of the
+    // default view while one branch racing off at very high K still can't
+    // blow the scale out. Prefer the caller's pre-refinement estimate
+    // (homeSpan) when given — recomputing this from `rl` here would read the
+    // adaptively-refined (point-dense, tail-contaminated) array instead.
+    halfSpan=(homeSpan!=null)?homeSpan:estimateLocusHalfSpan(poles,zeros,curPoles,rl);
   }
-  const clipAt=halfSpan*1.4;
   const scale=Math.min(sizeX,sizeY)/(2*halfSpan);
   const X=(v)=>pcx+(v-vcx)*scale, Y=(v)=>pcy-(v-vcy)*scale;
   lastRender.rootlocus={cx:vcx,cy:vcy,halfSpan,scale,pcx,pcy,px0,px1,py0,py1};
@@ -1035,19 +1191,38 @@ function renderRootLocus(canvas,rl,poles,zeros,curPoles,stable,view,tunedW){
   ctx.beginPath();ctx.moveTo(X(0),py0);ctx.lineTo(X(0),py1);ctx.stroke();
   ctx.beginPath();ctx.moveTo(px0,Y(0));ctx.lineTo(px1,Y(0));ctx.stroke();
   for(const branch of rl){
-    const pts=branch.map(p=>(Math.abs(p.re-vcx)>clipAt||Math.abs(p.im-vcy)>clipAt)?null:[X(p.re),Y(p.im)]);
+    // No manual distance-based culling here: the canvas clip above already
+    // restricts drawing to the visible rect, and — unlike culling points to
+    // null — it keeps each branch's stroke continuous right out to the true
+    // edge of the frame instead of stopping short of it.
+    const pts=branch.map(p=>[X(p.re),Y(p.im)]);
     drawTrace(ctx,pts,SC.locus,{width:1.7,alpha:.85});
   }
   for(const p of poles)crossMarker(ctx,X(p[0]),Y(p[1]),5,SC.input);
   for(const z of zeros)circleMarker(ctx,X(z[0]),Y(z[1]),5,SC.secondary,false);
   for(const p of curPoles)diamondMarker(ctx,X(p[0]),Y(p[1]),5,stable?SC.good:SC.bad);
   if(tunedW!=null)tunedMarker(ctx,X(0),Y(tunedW),'');
+  if(hoverPix&&hoverPix.mx>=px0&&hoverPix.mx<=px1&&hoverPix.my>=py0&&hoverPix.my<=py1){
+    const {mx,my}=hoverPix;
+    let best=null,bestD=Infinity;
+    for(const branch of rl){
+      for(const p of branch){
+        const d=Math.hypot(X(p.re)-mx,Y(p.im)-my);
+        if(d<bestD){bestD=d;best=p;}
+      }
+    }
+    if(best){
+      const hx=X(best.re),hy=Y(best.im);
+      drawCrosshair(ctx,hx,hy,{px0,px1,py0,py1});
+      drawHoverBox(ctx,hx,hy,[`K = ${fmtNum(best.K)}`,`s = ${fmtNum(best.re)} + j${fmtNum(best.im)}`],{px0,px1,py0,py1});
+    }
+  }
   ctx.restore();
-  axisLabel(ctx,'Re',px1-10,pcy+13);
-  axisLabel(ctx,'Im',pcx+16,py0+8);
+  axisLabel(ctx,'Re (s⁻¹)',px1-4,pcy+13,'right');
+  axisLabel(ctx,'Im (s⁻¹)',pcx+6,py0+8,'left');
   drawLegend(ctx,px0+4,py1-10,[{color:SC.input,label:'pole (×)'},{color:SC.secondary,label:'zero (○)'},{color:stable?SC.good:SC.bad,label:'design (◆)'}]);
 }
-function renderPoleZero(canvas,poles,zeros,view,tunedW){
+function renderPoleZero(canvas,poles,zeros,view,tunedW,hoverPix){
   const {ctx,w,h}=fitCanvas(canvas);
   const pad={l:44,r:16,t:14,b:26};
   const {px0,px1,py0,py1}=plotFrame(ctx,w,h,pad);
@@ -1081,9 +1256,26 @@ function renderPoleZero(canvas,poles,zeros,view,tunedW){
   for(const p of poles)crossMarker(ctx,X(p[0]),Y(p[1]),7,p[0]<0?SC.good:SC.bad);
   for(const z of zeros)circleMarker(ctx,X(z[0]),Y(z[1]),6,SC.secondary,false);
   if(tunedW!=null)tunedMarker(ctx,X(0),Y(tunedW),'');
+  if(hoverPix&&hoverPix.mx>=px0&&hoverPix.mx<=px1&&hoverPix.my>=py0&&hoverPix.my<=py1){
+    const {mx,my}=hoverPix;
+    // Snap to the nearest pole/zero within ~10px so the readout names it;
+    // otherwise just report the raw cursor location in the s-plane — there's
+    // no continuous curve here to measure against.
+    let bestD=Infinity,bestVal=null,bestKind=null;
+    for(const p of poles){const d=Math.hypot(X(p[0])-mx,Y(p[1])-my); if(d<bestD){bestD=d;bestVal=p;bestKind='pole';}}
+    for(const z of zeros){const d=Math.hypot(X(z[0])-mx,Y(z[1])-my); if(d<bestD){bestD=d;bestVal=z;bestKind='zero';}}
+    let reV,imV,kind;
+    if(bestVal&&bestD<=10){reV=bestVal[0];imV=bestVal[1];kind=bestKind;}
+    else{reV=vcx+(mx-pcx)/scale; imV=vcy-(my-pcy)/scale; kind=null;}
+    const hx=X(reV),hy=Y(imV);
+    drawCrosshair(ctx,hx,hy,{px0,px1,py0,py1});
+    const lines=[`Re = ${fmtNum(reV)}`,`Im = ${fmtNum(imV)}`];
+    if(kind)lines.push(kind);
+    drawHoverBox(ctx,hx,hy,lines,{px0,px1,py0,py1});
+  }
   ctx.restore();
-  axisLabel(ctx,'Re',px1-10,pcy+13);
-  axisLabel(ctx,'Im',pcx+16,py0+8);
+  axisLabel(ctx,'Re (s⁻¹)',px1-4,pcy+13,'right');
+  axisLabel(ctx,'Im (s⁻¹)',pcx+6,py0+8,'left');
   drawLegend(ctx,px0+4,py1-10,[{color:SC.good,label:'pole (×)'},{color:SC.secondary,label:'zero (○)'}]);
 }
 
@@ -1156,15 +1348,24 @@ function getControllerTF(){
 function getPlantTF(){return parseTF(els.plantInput.value);}
 
 let lastData=null;
+/* Renders a single panel from the cached lastData + current pan/zoom/hover
+   state. Used both by redrawAll() (all six, after a recompute or a
+   pan/zoom change) and directly by the hover handlers in
+   attachRectZoomPan/attachDiscZoomPan, which only need to refresh the one
+   panel the pointer is over. */
+function renderOne(key){
+  if(!lastData)return;
+  const d=lastData, h=hover[key];
+  if(key==='time')renderTime(document.getElementById('cvTime'),d.sim,state.sigType,views.time,h);
+  else if(key==='polezero')renderPoleZero(document.getElementById('cvPZ'),d.closedPoles,d.closedZeros,views.polezero,d.tuned.w,h);
+  else if(key==='bodemag')renderBodeMag(document.getElementById('cvBodeMag'),{ws:d.ws,mags:d.mags,wgc:d.wgc,tuned:d.tuned},views.bodemag,h);
+  else if(key==='bodephase')renderBodePhase(document.getElementById('cvBodePhase'),{ws:d.ws,phases:d.phases,wpc:d.wpc,tuned:d.tuned},views.bodephase,h);
+  else if(key==='nyquist')renderNyquist(document.getElementById('cvNyquist'),{re:d.re,im:d.im,ws:d.ws,tuned:d.tuned},views.nyquist,h);
+  else if(key==='rootlocus')renderRootLocus(document.getElementById('cvRootLocus'),d.rl,d.openPoles,d.openZeros,d.closedPoles,d.stable,views.rootlocus,d.tuned.w,d.locusSpan,h);
+}
 function redrawAll(){
   if(!lastData)return;
-  const d=lastData;
-  renderTime(document.getElementById('cvTime'),d.sim,state.sigType,views.time);
-  renderPoleZero(document.getElementById('cvPZ'),d.closedPoles,d.closedZeros,views.polezero,d.tuned.w);
-  renderBodeMag(document.getElementById('cvBodeMag'),{ws:d.ws,mags:d.mags,wgc:d.wgc,tuned:d.tuned},views.bodemag);
-  renderBodePhase(document.getElementById('cvBodePhase'),{ws:d.ws,phases:d.phases,wpc:d.wpc,tuned:d.tuned},views.bodephase);
-  renderNyquist(document.getElementById('cvNyquist'),{re:d.re,im:d.im,tuned:d.tuned},views.nyquist);
-  renderRootLocus(document.getElementById('cvRootLocus'),d.rl,d.openPoles,d.openZeros,d.closedPoles,d.stable,views.rootlocus,d.tuned.w);
+  ['time','polezero','bodemag','bodephase','nyquist','rootlocus'].forEach(renderOne);
 }
 
 function computeAll(){
@@ -1248,8 +1449,21 @@ function computeAll(){
   };
 
   // ---- root locus of L(s) ----
+  // Start from a moderate log-spaced gain sweep, then adaptively bisect
+  // wherever consecutive samples land too far apart in the complex plane —
+  // this is what keeps breakaway/break-in points (where branches meet and
+  // peel apart) smooth instead of a coarse straight-line jump.
   let kMaxLocus=1000;
-  const rl=rootLocus(L.num,L.den,kMaxLocus,90);
+  const rl=rootLocus(L.num,L.den,kMaxLocus,130);
+  // Estimate the "home" view span from the un-refined sweep, before any
+  // adaptive subdivision runs — refineLocus below adds points near
+  // breakaway/break-in gaps, including gaps out on a runaway branch's tail,
+  // and letting those new points feed back into the span estimate is what
+  // caused the auto-scale to blow back out. This value is cached in
+  // lastData and reused at render/redraw time instead of recomputing from
+  // the (now point-dense) rl array.
+  const locusSpan=estimateLocusHalfSpan(openPoles,openZeros,closedPoles,rl);
+  refineLocus(rl,L.den,L.num,Math.max(locusSpan*0.018,0.01),1400,locusSpan*3);
 
   // ---- time-domain simulation ----
   const ss=buildStateSpace(T.num,T.den);
@@ -1281,7 +1495,7 @@ function computeAll(){
 
   // ---- cache + draw panels (current pan/zoom views are preserved) ----
   els.timeSub.textContent=state.sigType+', r→y';
-  lastData={sim,closedPoles,closedZeros,openPoles,openZeros,ws,mags,phases,wgc,wpc,re,im,rl,stable,tuned};
+  lastData={sim,closedPoles,closedZeros,openPoles,openZeros,ws,mags,phases,wgc,wpc,re,im,rl,stable,tuned,locusSpan};
   redrawAll();
 }
 

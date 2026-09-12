@@ -72,6 +72,22 @@ vanilla JavaScript in the `<script>` block, operating on plain arrays and
   scaling for Nyquist/root-locus/pole-zero, and the pan/zoom/reset
   interaction (wheel-to-zoom anchored at the cursor, drag-to-pan, per-panel
   view state) are all custom, not a charting library feature.
+- **Root-locus refinement** — after the initial log-spaced gain sweep, the
+  gain axis is adaptively bisected wherever consecutive samples on any
+  branch land too far apart in the complex plane (e.g. near a breakaway/
+  break-in point), re-solving and inserting extra points only where needed
+  so those curves render smoothly instead of as a coarse jump. The view's
+  auto-scale is computed once from the *pre-refinement* sweep (poles/zeros/
+  design point spread, plus a trimmed look at the branches themselves) and
+  reused at render time, so a branch racing toward infinity at high gain
+  can't blow the scale back out.
+- **Hover readout** — every panel tracks the pointer and, on hover, draws a
+  crosshair snapped to the nearest underlying data point with a small
+  coordinate readout: interpolated `ω`/magnitude/phase on the Bode plots,
+  the nearest swept-frequency sample on Nyquist, the nearest gain/pole
+  sample on the root locus, the nearest simulated sample on the time plot,
+  and either the nearest pole/zero or the raw cursor position in the
+  s-plane on the pole-zero map.
 
 ## What's in the zip
 
