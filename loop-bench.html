@@ -13,8 +13,11 @@
   --shadow:0 1px 2px rgba(20,30,34,.07),0 6px 16px rgba(20,30,34,.06);
   --radius:10px;
 }
+/* Auto (system) theme: only kicks in when no explicit data-theme has been
+   picked at all — the moment the theme <select> below sets one (even
+   "light"), this stops applying and that explicit choice wins instead. */
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
+  :root:not([data-theme]){
     --bg:#12181B; --surface:#1B2327; --surface-2:#212B30; --surface-3:#2A363C;
     --border:#313D42; --border-strong:#42525A;
     --text-primary:#E7EDEF; --text-secondary:#A8B7BD; --text-muted:#71828A;
@@ -35,6 +38,46 @@
   --status-warn:#F0C24C; --status-warn-bg:#332A11;
   --shadow:0 1px 2px rgba(0,0,0,.45),0 6px 18px rgba(0,0,0,.35);
 }
+:root[data-theme="solarized-light"]{
+  --bg:#FDF6E3; --surface:#FFFDF6; --surface-2:#EEE8D5; --surface-3:#E3DCC6;
+  --border:#DED6C1; --border-strong:#C9C0A8;
+  --text-primary:#073642; --text-secondary:#586E75; --text-muted:#839496;
+  --accent:#268BD2; --accent-strong:#1A6EA3; --accent-soft:#E4F0F7; --accent-ink:#FFFFFF;
+  --status-good:#859900; --status-good-bg:#EEF3D9;
+  --status-bad:#DC322F; --status-bad-bg:#FBE9E7;
+  --status-warn:#B58900; --status-warn-bg:#FAF1D9;
+  --shadow:0 1px 2px rgba(90,70,20,.08),0 6px 16px rgba(90,70,20,.07);
+}
+:root[data-theme="solarized-dark"]{
+  --bg:#002B36; --surface:#073642; --surface-2:#0B3D47; --surface-3:#0E4650;
+  --border:#0A4552; --border-strong:#16606D;
+  --text-primary:#EEE8D5; --text-secondary:#93A1A1; --text-muted:#657B83;
+  --accent:#268BD2; --accent-strong:#2AA198; --accent-soft:#0D3B4A; --accent-ink:#002B36;
+  --status-good:#859900; --status-good-bg:#16330F;
+  --status-bad:#DC322F; --status-bad-bg:#3A1210;
+  --status-warn:#B58900; --status-warn-bg:#332B06;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 6px 18px rgba(0,0,0,.4);
+}
+:root[data-theme="nord"]{
+  --bg:#2E3440; --surface:#3B4252; --surface-2:#434C5E; --surface-3:#4C566A;
+  --border:#434C5E; --border-strong:#4C566A;
+  --text-primary:#ECEFF4; --text-secondary:#D8DEE9; --text-muted:#8791A8;
+  --accent:#88C0D0; --accent-strong:#8FBCBB; --accent-soft:#3B4B54; --accent-ink:#2E3440;
+  --status-good:#A3BE8C; --status-good-bg:#2C3A2E;
+  --status-bad:#BF616A; --status-bad-bg:#3B2A2C;
+  --status-warn:#EBCB8B; --status-warn-bg:#3A3627;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 6px 18px rgba(0,0,0,.35);
+}
+:root[data-theme="dracula"]{
+  --bg:#282A36; --surface:#343746; --surface-2:#3D4059; --surface-3:#44475A;
+  --border:#44475A; --border-strong:#6272A4;
+  --text-primary:#F8F8F2; --text-secondary:#C3C6E0; --text-muted:#6272A4;
+  --accent:#BD93F9; --accent-strong:#FF79C6; --accent-soft:#3A3550; --accent-ink:#282A36;
+  --status-good:#50FA7B; --status-good-bg:#1E3320;
+  --status-bad:#FF5555; --status-bad-bg:#3A1F22;
+  --status-warn:#F1FA8C; --status-warn-bg:#3A3A1F;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 6px 18px rgba(0,0,0,.35);
+}
 
 *{box-sizing:border-box;}
 body{
@@ -44,7 +87,7 @@ body{
   padding-inline:20px;
   padding-block:20px 48px;
 }
-.wrap{max-width:1320px;margin:0 auto;}
+.wrap{width:100%;}
 
 code,.mono,input.mono,.readout{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;}
 h1,h2,h3{text-wrap:balance;}
@@ -56,10 +99,11 @@ h1,h2,h3{text-wrap:balance;}
 .topbar .tagline{color:var(--text-secondary);font-size:13.5px;}
 .topbar .meta{color:var(--text-muted);font-size:12px;}
 
-/* ---------- control bay ---------- */
-.control-bay{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px;}
-@media (max-width:900px){.control-bay{grid-template-columns:1fr;}}
-
+/* ---------- control cards ----------
+   These are now items of the SAME grid as the chart panels below (see
+   panels-grid/.panel) — same resize handle, same drag-to-reorder, same
+   grid-column/grid-row model — so they can be dragged anywhere among the
+   panels, not just reordered against each other. */
 .control-card{
   background:var(--surface);
   border:1px solid var(--border);
@@ -67,9 +111,16 @@ h1,h2,h3{text-wrap:balance;}
   padding:14px 16px 16px;
   box-shadow:var(--shadow);
   display:flex;flex-direction:column;gap:10px;
+  position:relative;margin-bottom:14px;
+  grid-column:span 2;grid-row:span 64;
+  min-width:0;min-height:0;
+  overflow:auto;
 }
-.control-card .card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.card-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);}
+.control-card.drag-over{outline:2px dashed var(--accent);outline-offset:-2px;}
+.control-card.resizing{outline:2px solid var(--accent);outline-offset:-2px;user-select:none;}
+.control-card .card-head{display:flex;align-items:center;gap:8px;cursor:grab;flex:0 0 auto;}
+.control-card .card-head:active{cursor:grabbing;}
+.card-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .card-title .idx{color:var(--accent);margin-right:6px;}
 
 .segmented{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px;}
@@ -124,36 +175,86 @@ select{appearance:auto;}
 }
 .error-banner.show{display:block;}
 
-/* ---------- panels grid ---------- */
-.panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-@media (max-width:760px){.panels-grid{grid-template-columns:1fr;}}
+/* ---------- layout preset / theme toolbar ---------- */
+.layout-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:14px;}
+.toolbar-group{display:flex;align-items:center;gap:8px;}
+.layout-toolbar label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);}
+.layout-toolbar select{
+  appearance:auto;font:inherit;font-size:12.5px;padding:6px 9px;border-radius:6px;
+  border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-primary);
+}
+.layout-toolbar .small-btn{min-width:112px;}
+.layout-toolbar .hint{margin-left:2px;}
+
+/* ---------- panels grid ----------
+   A CSS Grid with up to 4 columns (the actual column count is written to
+   --cols by a ResizeObserver in JS, based on the grid's own rendered width
+   — which shrinks/grows with the window OR with browser zoom, since zoom
+   changes the effective CSS-pixel width of the page just like a resize
+   does). grid-auto-flow:dense is what gives the "smaller panels backfill
+   the gap a bigger one leaves" behavior for free: when an item earlier in
+   DOM order is wide/tall, dense packing still slots a later, smaller item
+   into any gap above it rather than leaving that space empty.
+   Row tracks are a small fixed unit (--row-unit) with row-gap:0, so a
+   panel's height is exactly rowSpan*row-unit with no per-row gap padding
+   inflating it — vertical spacing between panels instead comes from each
+   .panel's own margin-bottom, which behaves like a normal gap without
+   multiplying across dozens of fine-grained row tracks. */
+.panels-grid{
+  display:grid;grid-auto-flow:dense;
+  grid-template-columns:repeat(var(--cols,6),1fr);
+  grid-auto-rows:var(--row-unit,6px);
+  column-gap:14px;row-gap:0;
+}
 
 .panel{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
   box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;
+  position:relative;margin-bottom:14px;
+  grid-column:span 3;grid-row:span 45;
+  min-width:0;min-height:0;
 }
 .panel.drag-over{outline:2px dashed var(--accent);outline-offset:-2px;}
+.panel.resizing{outline:2px solid var(--accent);outline-offset:-2px;user-select:none;}
 .panel-header{
   display:flex;align-items:center;gap:8px;padding:9px 10px 9px 6px;border-bottom:1px solid var(--border);
-  background:var(--surface-2);cursor:grab;
+  background:var(--surface-2);cursor:grab;flex:0 0 auto;
 }
 .panel-header:active{cursor:grabbing;}
-.drag-handle{color:var(--text-muted);font-size:14px;line-height:1;padding:2px 4px;user-select:none;letter-spacing:1px;}
-.panel-title{font-size:12.5px;font-weight:600;letter-spacing:.03em;flex:1;}
+.drag-handle{color:var(--text-muted);font-size:14px;line-height:1;padding:2px 4px;user-select:none;letter-spacing:1px;flex:0 0 auto;}
+/* Panels can be resized down to a quarter of the grid's width, so the
+   title/subtitle must truncate with an ellipsis instead of wrapping —
+   wrapping would grow the header and push the reorder/reset buttons
+   (flex:0 0 auto, always kept at full size) out past the panel edge. */
+.panel-title{font-size:12.5px;font-weight:600;letter-spacing:.03em;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .panel-title .sub{color:var(--text-muted);font-weight:500;margin-left:6px;font-size:11px;}
-.reorder-btns{display:flex;gap:2px;}
+.reorder-btns{display:flex;gap:2px;flex:0 0 auto;}
 .reorder-btns button{
   appearance:none;border:1px solid transparent;background:transparent;color:var(--text-muted);
   width:22px;height:22px;border-radius:5px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;
 }
 .reorder-btns button:hover{background:var(--surface-3);color:var(--text-primary);}
 .reorder-btns .reset-view{font-size:13px;}
-.panel-body{position:relative;flex:1;min-height:230px;background:#0B1210;}
-.panel-body canvas{display:block;width:100%;height:230px;cursor:grab;touch-action:none;-webkit-user-drag:none;user-select:none;}
+.panel-body{position:relative;flex:1;min-height:0;background:#0B1210;overflow:hidden;}
+.panel-body canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none;-webkit-user-drag:none;user-select:none;}
 .panel-body canvas.panning{cursor:grabbing;}
 .zoom-hint{
   position:absolute;right:8px;bottom:6px;font-size:9.5px;letter-spacing:.02em;color:rgba(143,203,184,.55);
   font-family:"IBM Plex Mono",monospace;pointer-events:none;user-select:none;
+}
+.resize-handle{
+  position:absolute;right:0;bottom:0;width:17px;height:17px;cursor:nwse-resize;z-index:5;
+  opacity:.4;transition:opacity .12s;touch-action:none;
+}
+.panel:hover .resize-handle,.resize-handle:active{opacity:.95;}
+/* While a layout preset pins an item to an explicit column/row, its manual
+   resize handle is hidden so a stray drag can't knock it out of the
+   preset's exact placement (dragging its header still works, but has no
+   visible effect since the placement is fixed, which is harmless). */
+.preset-pinned .resize-handle{display:none;}
+.resize-handle::before{
+  content:'';position:absolute;right:2px;bottom:2px;width:0;height:0;
+  border-style:solid;border-width:0 0 10px 10px;border-color:transparent transparent var(--text-muted) transparent;
 }
 .panel-note{padding:6px 10px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);background:var(--surface);}
 
@@ -167,20 +268,53 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
       <h1>PID Control Loop Bench</h1>
       <span class="tagline">Interactive PID / compensator design against any Laplace plant</span>
     </div>
-    <span class="meta">Unity negative feedback &middot; L(s) = C(s)&middot;P(s)</span>
+    <span class="meta">Negative feedback &middot; Y(s)/X(s) = G(s)/(1+G(s)H(s)), G(s)=C(s)&middot;P(s)</span>
   </div>
 
   <div class="error-banner" id="errorBanner"></div>
 
-  <div class="control-bay">
+  <div class="status-strip" id="statusStrip"></div>
+
+  <div class="layout-toolbar">
+    <div class="toolbar-group">
+      <label for="layoutPresetSelect">Layout preset</label>
+      <select id="layoutPresetSelect" class="mono">
+        <option value="free">Default (free-form)</option>
+        <option value="bode">Bode</option>
+        <option value="nyquist">Nyquist</option>
+        <option value="rootlocus">Root Locus</option>
+      </select>
+    </div>
+    <div class="toolbar-group">
+      <button class="small-btn" id="saveLayoutBtn" title="Save the current free-form drag order and panel sizes so they can be restored later, even after switching layout presets">&#128190; Save layout</button>
+      <button class="small-btn" id="restoreLayoutBtn" title="Restore the last saved free-form layout">&#8635; Restore saved</button>
+    </div>
+    <div class="toolbar-group">
+      <label for="themeSelect">Color theme</label>
+      <select id="themeSelect" class="mono">
+        <option value="auto">Auto (system)</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="solarized-light">Solarized Light</option>
+        <option value="solarized-dark">Solarized Dark</option>
+        <option value="nord">Nord</option>
+        <option value="dracula">Dracula</option>
+      </select>
+    </div>
+    <span class="hint">Controller/Process/Test input stacked on the right third, the chosen diagram(s) on the left two-thirds, everything else below.</span>
+  </div>
+
+  <div class="panels-grid" id="panelsGrid">
     <!-- Controller -->
-    <div class="control-card">
+    <div class="control-card" data-id="controller">
       <div class="card-head">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
         <span class="card-title"><span class="idx">01</span>Controller C(s)</span>
         <div class="segmented" id="ctrlModeSeg">
           <button data-mode="pid" class="active">P&middot;I&middot;D</button>
           <button data-mode="laplace">Laplace</button>
         </div>
+        <div class="reorder-btns"><button data-dir="-1" title="Move earlier">&#9664;</button><button data-dir="1" title="Move later">&#9654;</button></div>
       </div>
 
       <div id="ctrlPidFields" class="field-row">
@@ -207,12 +341,15 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="eq-readout" id="ctrlReadout">C(s) = &hellip;</div>
       </div>
       <div class="hint">Ideal PID form: C(s) = Kp + Ki/s + Kd&middot;s. Switch to Laplace to type any compensator directly.</div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <!-- Plant -->
-    <div class="control-card">
+    <div class="control-card" data-id="plant">
       <div class="card-head">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
         <span class="card-title"><span class="idx">02</span>Process P(s)</span>
+        <div class="reorder-btns"><button data-dir="-1" title="Move earlier">&#9664;</button><button data-dir="1" title="Move later">&#9654;</button></div>
       </div>
       <div class="field">
         <label for="plantPreset">Demonstration presets</label>
@@ -227,17 +364,20 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="eq-readout" id="plantReadout">P(s) = &hellip;</div>
       </div>
       <div class="hint">Write polynomials in <code>s</code>: <code>+ - * ^ ( )</code> and one division, e.g. <code>(s+1)/(s^2+2s+1)</code>.</div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <!-- Test signal -->
-    <div class="control-card">
+    <div class="control-card" data-id="testinput">
       <div class="card-head">
-        <span class="card-title"><span class="idx">03</span>Test input r(t)</span>
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="card-title"><span class="idx">03</span>Test input x(t)</span>
         <div class="segmented" id="sigModeSeg">
           <button data-sig="step" class="active">Step</button>
           <button data-sig="ramp">Ramp</button>
           <button data-sig="sine">Sine</button>
         </div>
+        <div class="reorder-btns"><button data-dir="-1" title="Move earlier">&#9664;</button><button data-dir="1" title="Move later">&#9654;</button></div>
       </div>
       <div class="field-row">
         <div class="field"><label for="amp">Amplitude</label><input type="number" id="amp" class="mono" step="0.1" value="1"></div>
@@ -249,12 +389,32 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <button class="small-btn" id="durAutoBtn">Auto duration</button>
       </div>
       <div class="hint">Sine frequency slider sweeps 0.05&ndash;50&thinsp;Hz (log scale) and marks &omega; on the Bode, phase and Nyquist diagrams even in Step/Ramp mode. Duration auto-fits the dominant time constant unless edited.</div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
-  </div>
 
-  <div class="status-strip" id="statusStrip"></div>
+    <!-- Feedback -->
+    <div class="control-card" data-id="feedback">
+      <div class="card-head">
+        <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
+        <span class="card-title"><span class="idx">04</span>Feedback H(s)</span>
+        <div class="reorder-btns"><button data-dir="-1" title="Move earlier">&#9664;</button><button data-dir="1" title="Move later">&#9654;</button></div>
+      </div>
+      <div class="field">
+        <label for="feedbackPreset">Demonstration presets</label>
+        <select id="feedbackPreset" class="mono"></select>
+      </div>
+      <div class="field">
+        <label for="feedbackInput">H(s) &mdash; numerator/denominator in s</label>
+        <input type="text" id="feedbackInput" class="mono" value="1">
+      </div>
+      <div class="field">
+        <label>Resulting transfer function</label>
+        <div class="eq-readout" id="feedbackReadout">H(s) = &hellip;</div>
+      </div>
+      <div class="hint">The feedback path fed back into the summing junction: Z(s) = X(s) &minus; H(s)Y(s). Loop gain L(s) = G(s)H(s) with G(s) = C(s)&middot;P(s); H(s) = 1 is the unity-feedback case.</div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
+    </div>
 
-  <div class="panels-grid" id="panelsGrid">
     <div class="panel" data-id="time">
       <div class="panel-header">
         <span class="drag-handle" draggable="true">&#8942;&#8942;</span>
@@ -262,6 +422,7 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="reorder-btns"><button class="reset-view" data-reset="time" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
       </div>
       <div class="panel-body"><canvas id="cvTime"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <div class="panel" data-id="polezero">
@@ -271,6 +432,7 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="reorder-btns"><button class="reset-view" data-reset="polezero" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
       </div>
       <div class="panel-body"><canvas id="cvPZ"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <div class="panel" data-id="bodemag">
@@ -280,6 +442,7 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="reorder-btns"><button class="reset-view" data-reset="bodemag" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
       </div>
       <div class="panel-body"><canvas id="cvBodeMag"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <div class="panel" data-id="bodephase">
@@ -289,6 +452,7 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="reorder-btns"><button class="reset-view" data-reset="bodephase" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
       </div>
       <div class="panel-body"><canvas id="cvBodePhase"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <div class="panel" data-id="nyquist">
@@ -298,6 +462,7 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="reorder-btns"><button class="reset-view" data-reset="nyquist" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
       </div>
       <div class="panel-body"><canvas id="cvNyquist"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
 
     <div class="panel" data-id="rootlocus">
@@ -307,16 +472,45 @@ footer.notes code{background:var(--surface-2);padding:1px 5px;border-radius:4px;
         <div class="reorder-btns"><button class="reset-view" data-reset="rootlocus" title="Reset zoom/pan">&#8635;</button><button data-dir="-1" title="Move earlier">&#9650;</button><button data-dir="1" title="Move later">&#9660;</button></div>
       </div>
       <div class="panel-body"><canvas id="cvRootLocus"></canvas><span class="zoom-hint">scroll = zoom &middot; drag = pan</span></div>
+      <div class="resize-handle" title="Drag to resize panel"></div>
     </div>
   </div>
 
   <footer class="notes">
-    Drag a panel by its header (&#8942;&#8942;) or use the &#9650;/&#9660; buttons to rearrange the bench. Scroll to zoom and drag to pan any diagram; &#8635; resets that panel's view. The violet marker tracks the tuned frequency from the Test input card. All six panels recompute live as you edit the controller, process, or test input.
+    Drag any card or panel by its header (&#8942;&#8942;) or use the &#9650;/&#9660; buttons to rearrange the bench &mdash; the controller, process, and test input cards can be moved anywhere among the chart panels too, not just against each other. Drag a corner to resize it &mdash; up to 6 columns wide, based on window width/zoom &mdash; and double-click that corner to reset its size; shrinking one lets a smaller card or panel later in the layout fill the space it frees up. Scroll to zoom and drag to pan any diagram; &#8635; resets that panel's view. The violet marker tracks the tuned frequency from the Test input card. All six chart panels recompute live as you edit the controller, process, or test input.
   </footer>
 </div>
 
 <script>
 'use strict';
+/* ---- color theme ----
+   The page chrome (backgrounds, cards, borders, text, status colors) is
+   driven entirely by CSS custom properties on the root element, switched
+   by a data-theme attribute (see the :root[data-theme="..."] blocks in
+   <style>). "Auto (system)" is the one choice that ISN'T a fixed
+   data-theme value — it removes the attribute entirely so the
+   prefers-color-scheme media query takes back over, matching the OS.
+   This intentionally only re-themes the page chrome, not the six chart
+   panels: those are rendered on <canvas> with their own fixed "scope"
+   palette (the SC object further down), kept deliberately consistent
+   (like a real oscilloscope's screen) regardless of page theme. */
+const THEME_KEY='loopbench-theme';
+function applyTheme(id){
+  if(!id||id==='auto')document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme',id);
+  try{localStorage.setItem(THEME_KEY,id||'auto');}catch(e){}
+}
+(function initTheme(){
+  let saved='auto';
+  try{saved=localStorage.getItem(THEME_KEY)||'auto';}catch(e){}
+  applyTheme(saved);
+  const sel=document.getElementById('themeSelect');
+  if(sel){
+    sel.value=saved;
+    sel.addEventListener('change',()=>applyTheme(sel.value));
+  }
+})();
+
 /* =========================================================================
    1. MATH CORE — complex numbers, polynomials, root finding, parsing,
       state-space simulation, frequency response, root locus.
@@ -662,6 +856,14 @@ const CTRL_PRESETS=[
   {name:'Lead compensator  ·  5(s+1)/(s+5)', expr:'5*(s+1)/(s+5)'},
   {name:'Lag compensator  ·  0.5(s+1)/(s+0.1)', expr:'0.5*(s+1)/(s+0.1)'},
 ];
+const FEEDBACK_PRESETS=[
+  {name:'Unity feedback  ·  H(s)=1', expr:'1'},
+  {name:'Attenuating sensor  ·  H(s)=0.5', expr:'0.5'},
+  {name:'Amplifying sensor  ·  H(s)=2', expr:'2'},
+  {name:'Sensor lag  ·  1/(0.05s+1)', expr:'1/(0.05*s+1)'},
+  {name:'Slow sensor lag  ·  1/(0.5s+1)', expr:'1/(0.5*s+1)'},
+  {name:'Washout (high-pass)  ·  s/(s+1)', expr:'s/(s+1)'},
+];
 
 /* =========================================================================
    3. CANVAS PLOTTING HELPERS  — fixed "scope" theme, independent of page theme
@@ -987,7 +1189,7 @@ function renderTime(canvas,data,sigType,view,hoverPix){
     drawHoverBox(ctx,hx,hy,[`t = ${fmtNum(ts[idx])} s`,`y = ${fmtNum(ys[idx])}`,`r = ${fmtNum(us[idx])}`],{px0,px1,py0,py1});
   }
   ctx.restore();
-  drawLegend(ctx,px0+4,py0+14,[{color:SC.input,label:'reference r(t)'},{color:SC.output,label:'output y(t)'}]);
+  drawLegend(ctx,px0+4,py0+14,[{color:SC.input,label:'input x(t)'},{color:SC.output,label:'output y(t)'}]);
 }
 
 function renderBodeMag(canvas,fr,view,hoverPix){
@@ -1293,6 +1495,9 @@ const els={
   plantPreset:document.getElementById('plantPreset'),
   plantInput:document.getElementById('plantInput'),
   plantReadout:document.getElementById('plantReadout'),
+  feedbackPreset:document.getElementById('feedbackPreset'),
+  feedbackInput:document.getElementById('feedbackInput'),
+  feedbackReadout:document.getElementById('feedbackReadout'),
   sigModeSeg:document.getElementById('sigModeSeg'),
   amp:document.getElementById('amp'), freq:document.getElementById('freq'), dur:document.getElementById('dur'),
   freqField:document.getElementById('freqField'), freqSliderRow:document.getElementById('freqSliderRow'),
@@ -1307,6 +1512,8 @@ PLANT_PRESETS.forEach((p,i)=>{const o=document.createElement('option');o.value=i
 els.plantPreset.selectedIndex=2;
 CTRL_PRESETS.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=p.name;els.ctrlPreset.appendChild(o);});
 els.ctrlPreset.selectedIndex=3;
+FEEDBACK_PRESETS.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=p.name;els.feedbackPreset.appendChild(o);});
+els.feedbackPreset.selectedIndex=0;
 
 function polyToStr(p,ascendPow){
   // p is descending-order coeff array; produce a readable expression
@@ -1346,6 +1553,7 @@ function getControllerTF(){
   return parseTF(els.ctrlLaplaceInput.value);
 }
 function getPlantTF(){return parseTF(els.plantInput.value);}
+function getFeedbackTF(){return parseTF(els.feedbackInput.value);}
 
 let lastData=null;
 /* Renders a single panel from the cached lastData + current pan/zoom/hover
@@ -1370,7 +1578,7 @@ function redrawAll(){
 
 function computeAll(){
   els.errorBanner.classList.remove('show');
-  let C,P;
+  let C,P,H;
   try{
     C=getControllerTF();
     els.ctrlReadout.textContent='C(s) = '+tfToStr(C);
@@ -1387,9 +1595,22 @@ function computeAll(){
     els.plantReadout.textContent='P(s) = —';
     return;
   }
+  try{
+    H=getFeedbackTF();
+    els.feedbackReadout.textContent='H(s) = '+tfToStr(H);
+  }catch(e){
+    showError('Feedback H(s): '+e.message);
+    els.feedbackReadout.textContent='H(s) = —';
+    return;
+  }
 
-  const L={num:polyMul(C.num,P.num), den:polyMul(C.den,P.den)};
-  const T={num:L.num, den:polyAdd(L.den,L.num)};
+  // Forward path G(s) = C(s)·P(s); loop gain L(s) = G(s)H(s); closed loop
+  // Y(s)/X(s) = G(s)/(1+G(s)H(s)) = G_num·H_den / (G_den·H_den + G_num·H_num).
+  // H(s)=1 (unity feedback) collapses this back to the familiar T = L/(1+L).
+  const G={num:polyMul(C.num,P.num), den:polyMul(C.den,P.den)};
+  const GdHd=polyMul(G.den,H.den);
+  const L={num:polyMul(G.num,H.num), den:GdHd};
+  const T={num:polyMul(G.num,H.den), den:polyAdd(GdHd,L.num)};
   if(polyTrim(T.den).every(v=>Math.abs(v)<1e-12)){showError('Closed-loop denominator is identically zero — check your transfer functions.');return;}
 
   let closedPoles;
@@ -1494,7 +1715,7 @@ function computeAll(){
   renderStatus({stable,dominant,gm,pm,wgc,wpc,improper:ss.improper});
 
   // ---- cache + draw panels (current pan/zoom views are preserved) ----
-  els.timeSub.textContent=state.sigType+', r→y';
+  els.timeSub.textContent=state.sigType+', x→y';
   lastData={sim,closedPoles,closedZeros,openPoles,openZeros,ws,mags,phases,wgc,wpc,re,im,rl,stable,tuned,locusSpan};
   redrawAll();
 }
@@ -1546,6 +1767,10 @@ els.plantPreset.addEventListener('change',()=>{
   els.plantInput.value=PLANT_PRESETS[els.plantPreset.value].expr;
   computeAll();
 });
+els.feedbackPreset.addEventListener('change',()=>{
+  els.feedbackInput.value=FEEDBACK_PRESETS[els.feedbackPreset.value].expr;
+  computeAll();
+});
 els.freqSlider.addEventListener('input',()=>{
   const f=Math.pow(10,parseFloat(els.freqSlider.value));
   els.freq.value=Math.round(f*1000)/1000;
@@ -1561,58 +1786,397 @@ els.freq.addEventListener('input',()=>{
 els.dur.addEventListener('input',()=>{state.durAuto=false;computeAll();});
 els.durAutoBtn.addEventListener('click',()=>{state.durAuto=true;computeAll();});
 
-[els.kp,els.ki,els.kd,els.ctrlLaplaceInput,els.plantInput,els.amp].forEach(inp=>{
+[els.kp,els.ki,els.kd,els.ctrlLaplaceInput,els.plantInput,els.feedbackInput,els.amp].forEach(inp=>{
   inp.addEventListener('input',()=>computeAll());
 });
 
-/* ---- panel drag & reorder ---- */
-const grid=document.getElementById('panelsGrid');
-let dragEl=null;
-grid.querySelectorAll('.drag-handle').forEach(handle=>{
-  handle.addEventListener('dragstart',(e)=>{dragEl=handle.closest('.panel');e.dataTransfer.effectAllowed='move';});
-  handle.addEventListener('dragend',()=>{dragEl=null;grid.querySelectorAll('.panel').forEach(p=>p.classList.remove('drag-over'));savePanelOrder();});
-});
-grid.querySelectorAll('.panel').forEach(panel=>{
-  panel.addEventListener('dragover',(e)=>{
-    e.preventDefault();
-    if(!dragEl||dragEl===panel)return;
-    panel.classList.add('drag-over');
-  });
-  panel.addEventListener('dragleave',()=>panel.classList.remove('drag-over'));
-  panel.addEventListener('drop',(e)=>{
-    e.preventDefault();
-    panel.classList.remove('drag-over');
-    if(!dragEl||dragEl===panel)return;
-    const panels=Array.from(grid.children);
-    const from=panels.indexOf(dragEl), to=panels.indexOf(panel);
-    if(from<to)panel.after(dragEl); else panel.before(dragEl);
-  });
-  panel.querySelectorAll('.reorder-btns button[data-dir]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const dir=parseInt(btn.dataset.dir,10);
-      const sibling=dir<0?panel.previousElementSibling:panel.nextElementSibling;
-      if(!sibling)return;
-      if(dir<0)grid.insertBefore(panel,sibling); else grid.insertBefore(sibling,panel);
-      savePanelOrder();
+/* ---- drag & reorder (shared by the chart panels grid and the control-bay
+   cards above it) ----
+   Each item is a direct child of `container` carrying a stable data-id, a
+   `.drag-handle` to grab, and `.reorder-btns button[data-dir]` as a
+   keyboard/touch-friendly fallback to dragging. Order persists per
+   container under its own localStorage key. */
+function makeReorderable(container,storageKey){
+  if(!container)return;
+  function items(){return Array.from(container.children);}
+  let dragEl=null;
+  items().forEach(item=>{
+    const handle=item.querySelector('.drag-handle');
+    if(handle){
+      handle.addEventListener('dragstart',(e)=>{dragEl=item;e.dataTransfer.effectAllowed='move';});
+      handle.addEventListener('dragend',()=>{dragEl=null;items().forEach(p=>p.classList.remove('drag-over'));saveOrder();});
+    }
+    item.addEventListener('dragover',(e)=>{
+      e.preventDefault();
+      if(!dragEl||dragEl===item)return;
+      item.classList.add('drag-over');
+    });
+    item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
+    item.addEventListener('drop',(e)=>{
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      if(!dragEl||dragEl===item)return;
+      const list=items();
+      const from=list.indexOf(dragEl), to=list.indexOf(item);
+      if(from<to)item.after(dragEl); else item.before(dragEl);
+    });
+    item.querySelectorAll('.reorder-btns button[data-dir]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const dir=parseInt(btn.dataset.dir,10);
+        const sibling=dir<0?item.previousElementSibling:item.nextElementSibling;
+        if(!sibling)return;
+        if(dir<0)container.insertBefore(item,sibling); else container.insertBefore(sibling,item);
+        saveOrder();
+      });
     });
   });
-});
-function savePanelOrder(){
-  try{
-    const order=Array.from(grid.children).map(p=>p.dataset.id);
-    localStorage.setItem('loopbench-panel-order',JSON.stringify(order));
-  }catch(e){}
+  function saveOrder(){
+    try{
+      const order=items().map(p=>p.dataset.id);
+      localStorage.setItem(storageKey,JSON.stringify(order));
+    }catch(e){}
+  }
+  function restoreOrder(){
+    try{
+      const order=JSON.parse(localStorage.getItem(storageKey)||'null');
+      if(!order)return;
+      const map={};
+      items().forEach(p=>map[p.dataset.id]=p);
+      for(const id of order)if(map[id])container.appendChild(map[id]);
+    }catch(e){}
+  }
+  restoreOrder();
 }
-function restorePanelOrder(){
+const grid=document.getElementById('panelsGrid');
+makeReorderable(grid,'loopbench-panel-order');
+
+/* ---- panel resize (variable column/row span on the CSS grid) ----
+   Every grid item — the 3 control cards (Controller/Process/Test input)
+   and the 6 chart panels alike — has a "desired" size {colSpan (1-6),
+   rowSpan} dragged by its corner handle. The actual number of columns the
+   grid offers (1-6) is recomputed from the grid's own rendered width
+   whenever it changes — including from browser zoom, which changes the
+   effective CSS-pixel width of the page exactly like a window resize
+   does. An item's applied column span is the desired value clamped to
+   whatever's currently available, so shrinking the window and widening it
+   back later restores the larger size without it being forgotten.
+   grid-auto-flow:dense (set in CSS) is what then lets a smaller item
+   backfill any gap a resized neighbor leaves, instead of leaving a blank
+   hole in the row — which is also how a control card can end up sitting
+   below or between chart panels, since they're all just items of one
+   shared grid now. */
+const ROW_UNIT=6, COL_GAP=14, MIN_COLSPAN=1, BASELINE_COLS=6, MAX_COLSPAN=6, MIN_ROWSPAN=32, MAX_ROWSPAN=160;
+const CONTROL_IDS=new Set(['controller','plant','testinput','feedback']);
+const DEFAULT_SIZES={
+  control:{colSpan:2,rowSpan:64},
+  chart:{colSpan:3,rowSpan:45}
+};
+let cols=6;
+let panelSizes={};
+(function loadPanelSizes(){
+  try{panelSizes=JSON.parse(localStorage.getItem('loopbench-panel-sizes')||'{}')||{};}catch(e){panelSizes={};}
+})();
+function sizeFor(id){
+  const s=panelSizes[id];
+  if(!s||!s.colSpan||!s.rowSpan)return {...(CONTROL_IDS.has(id)?DEFAULT_SIZES.control:DEFAULT_SIZES.chart)};
+  return s;
+}
+function savePanelSizes(){
+  try{localStorage.setItem('loopbench-panel-sizes',JSON.stringify(panelSizes));}catch(e){}
+}
+/* An item's stored colSpan is always "how many of a 6-column baseline"
+   (1=sixth width, 2=a third, 3=half, ... 6=full), independent of how many
+   columns are actually active right now. The rendered span is that
+   fraction re-applied to the current column count, so a "half-width"
+   panel stays roughly half-width whether the grid currently has 6 columns
+   or 2 — instead of a fixed span suddenly meaning "the whole row" once
+   the grid narrows down to fewer columns than the span itself. */
+function appliedColSpan(desiredColSpan){
+  return Math.max(1,Math.min(cols,Math.round(desiredColSpan*cols/BASELINE_COLS)));
+}
+function applyPanelSize(panel){
+  const s=sizeFor(panel.dataset.id);
+  panel.style.gridColumn='span '+appliedColSpan(s.colSpan);
+  panel.style.gridRow='span '+s.rowSpan;
+}
+function applyAllPanelSizes(){
+  grid.querySelectorAll('.panel,.control-card').forEach(applyPanelSize);
+}
+function computeCols(width){
+  const minCol=200;
+  for(let c=MAX_COLSPAN;c>=2;c--){
+    if(width>=c*minCol+(c-1)*COL_GAP)return c;
+  }
+  return 1;
+}
+
+/* ---- layout presets ----
+   A preset pins a handful of items to an explicit column on a 6-column
+   baseline instead of letting them auto-flow. The four control cards
+   (01-04: Controller, Process, Test input, Feedback) always fill the right
+   third (columns 5-6), stacked top to bottom in that order; the preset's
+   named diagram(s) fill the left two-thirds (columns 1-4) directly above
+   them. Row placement, unlike column, is NOT a fixed size — a control
+   card's height is measured from its own rendered content (so every field
+   and hint is visible with no internal scrollbar, whatever the current
+   font size/zoom/column width happens to make that content take), and the
+   diagram(s) on the left are then stretched to that same total height so
+   both columns still tile the rectangle exactly, with no gap for a later
+   "rest" item to sneak into. Everything left with no explicit placement at
+   all is naturally auto-flowed by grid-auto-flow:dense into the first free
+   cell — the row right after that block — which is how "the rest, below"
+   falls out of the grid algorithm itself rather than any manual bookkeeping. */
+const layoutPresets={
+  bode:{
+    controller:{colStart:5,colSpan:2},
+    plant:{colStart:5,colSpan:2},
+    testinput:{colStart:5,colSpan:2},
+    feedback:{colStart:5,colSpan:2},
+    bodemag:{colStart:1,colSpan:4},
+    bodephase:{colStart:1,colSpan:4}
+  },
+  nyquist:{
+    controller:{colStart:5,colSpan:2},
+    plant:{colStart:5,colSpan:2},
+    testinput:{colStart:5,colSpan:2},
+    feedback:{colStart:5,colSpan:2},
+    nyquist:{colStart:1,colSpan:4}
+  },
+  rootlocus:{
+    controller:{colStart:5,colSpan:2},
+    plant:{colStart:5,colSpan:2},
+    testinput:{colStart:5,colSpan:2},
+    feedback:{colStart:5,colSpan:2},
+    rootlocus:{colStart:1,colSpan:4}
+  }
+};
+let currentPreset='free';
+(function loadPreset(){
   try{
-    const order=JSON.parse(localStorage.getItem('loopbench-panel-order')||'null');
-    if(!order)return;
+    const saved=localStorage.getItem('loopbench-layout-preset');
+    if(saved&&(saved==='free'||layoutPresets[saved]))currentPreset=saved;
+  }catch(e){}
+})();
+/* Column placement scales proportionally with the active column count the
+   same way appliedColSpan does (a baseline-6 "start at column 5" becomes
+   "start at column 3 of 4" etc.), so the preset degrades gracefully rather
+   than breaking outright if the window narrows below 6 columns. It's
+   pixel-exact at the full 6-column desktop width the request describes. */
+function appliedColStart(desiredStart){
+  return Math.max(1,Math.min(cols+1,Math.round((desiredStart-1)*cols/BASELINE_COLS)+1));
+}
+function applyLayoutPreset(name){
+  currentPreset=(name==='free'||layoutPresets[name])?name:'free';
+  try{localStorage.setItem('loopbench-layout-preset',currentPreset);}catch(e){}
+  const preset=layoutPresets[currentPreset]||null;
+  const allItems=grid.querySelectorAll('.panel,.control-card');
+  const sel=document.getElementById('layoutPresetSelect');
+
+  if(!preset){
+    allItems.forEach(el=>{el.classList.remove('preset-pinned'); applyPanelSize(el);});
+    if(sel&&sel.value!==currentPreset)sel.value=currentPreset;
+    return;
+  }
+
+  // Phase 1 — column placement only. Every pinned item gets a small
+  // placeholder row span so its box is short; that doesn't shrink its
+  // fields (they keep their natural height and the box merely scrolls),
+  // which is exactly what makes scrollHeight below report the *true*
+  // content height rather than whatever a bigger placeholder box would be.
+  allItems.forEach(el=>{
+    const id=el.dataset.id;
+    const pin=preset[id];
+    if(pin){
+      el.style.gridColumn=appliedColStart(pin.colStart)+' / span '+appliedColSpan(pin.colSpan);
+      el.style.gridRow='1 / span '+MIN_ROWSPAN;
+      el.classList.add('preset-pinned');
+    }else{
+      el.classList.remove('preset-pinned');
+      applyPanelSize(el);
+    }
+  });
+
+  // Phase 2/3 — measure each pinned control card's natural content height
+  // now that its column width (and therefore its text wrapping) is final,
+  // then stack them using those heights. A verify-and-correct loop follows
+  // because the very first measurement is taken against the small
+  // placeholder box from Phase 1, and re-laying that box out taller can
+  // itself change wrapping slightly (e.g. a scrollbar that was needed
+  // against the placeholder's height is no longer needed once the box is
+  // tall enough, changing the available width by its thickness) — so
+  // rather than trying to predict that exactly, this re-checks the *real*
+  // box against its own content and pads further if anything is still
+  // clipped, which converges in at most a couple of passes.
+  const controlOrder=['controller','plant','testinput','feedback'].filter(id=>preset[id]);
+  const controlRows={};
+  controlOrder.forEach(id=>{
+    const el=grid.querySelector('.control-card[data-id="'+id+'"]');
+    controlRows[id]=el?Math.max(MIN_ROWSPAN,Math.ceil(el.scrollHeight/ROW_UNIT)+1):MIN_ROWSPAN;
+  });
+  function placeControlStack(){
+    let cursor=1;
+    controlOrder.forEach(id=>{
+      const el=grid.querySelector('.control-card[data-id="'+id+'"]');
+      if(!el)return;
+      el.style.gridRow=cursor+' / span '+controlRows[id];
+      cursor+=controlRows[id];
+    });
+    return cursor-1;
+  }
+  let topRows=placeControlStack();
+  for(let pass=0;pass<4;pass++){
+    let changed=false;
+    controlOrder.forEach(id=>{
+      const el=grid.querySelector('.control-card[data-id="'+id+'"]');
+      if(el&&el.scrollHeight>el.clientHeight+1){
+        controlRows[id]+=Math.ceil((el.scrollHeight-el.clientHeight)/ROW_UNIT)+1;
+        changed=true;
+      }
+    });
+    if(!changed)break;
+    topRows=placeControlStack();
+  }
+  topRows=Math.max(topRows,MIN_ROWSPAN);
+  const chartIds=Object.keys(preset).filter(id=>!CONTROL_IDS.has(id));
+  if(chartIds.length===1){
+    const el=grid.querySelector('.panel[data-id="'+chartIds[0]+'"]');
+    if(el)el.style.gridRow='1 / span '+topRows;
+  }else if(chartIds.length===2){
+    const half=Math.max(MIN_ROWSPAN,Math.round(topRows/2));
+    const el1=grid.querySelector('.panel[data-id="'+chartIds[0]+'"]');
+    const el2=grid.querySelector('.panel[data-id="'+chartIds[1]+'"]');
+    if(el1)el1.style.gridRow='1 / span '+half;
+    if(el2)el2.style.gridRow=(half+1)+' / span '+(topRows-half);
+  }
+  if(sel&&sel.value!==currentPreset)sel.value=currentPreset;
+}
+function relayout(){
+  if(currentPreset&&currentPreset!=='free')applyLayoutPreset(currentPreset);
+  else applyAllPanelSizes();
+}
+const layoutPresetSelect=document.getElementById('layoutPresetSelect');
+if(layoutPresetSelect){
+  layoutPresetSelect.value=currentPreset;
+  layoutPresetSelect.addEventListener('change',()=>{
+    applyLayoutPreset(layoutPresetSelect.value);
+    redrawAll();
+  });
+}
+
+/* ---- explicit save/restore of the free-form layout ----
+   The free-form drag order and per-item sizes are already autosaved to
+   localStorage continuously as you drag/resize (loopbench-panel-order /
+   loopbench-panel-sizes) — that's what survives an ordinary reload. This
+   is a separate, explicit checkpoint on top of that: "Save layout" freezes
+   a named snapshot of the current order+sizes that "Restore saved" can
+   always bring back later, even after further dragging or after switching
+   through the Bode/Nyquist/Root Locus presets (which never touch these
+   underlying values, only how they're displayed while active). */
+const FREEFORM_SAVE_KEY='loopbench-freeform-saved';
+function flashButtonLabel(btn,msg){
+  if(!btn)return;
+  if(!btn.dataset.label)btn.dataset.label=btn.innerHTML;
+  btn.innerHTML=msg;
+  clearTimeout(btn._flashTimer);
+  btn._flashTimer=setTimeout(()=>{btn.innerHTML=btn.dataset.label;},1500);
+}
+const saveLayoutBtn=document.getElementById('saveLayoutBtn');
+const restoreLayoutBtn=document.getElementById('restoreLayoutBtn');
+if(saveLayoutBtn){
+  saveLayoutBtn.addEventListener('click',()=>{
+    const snapshot={
+      order:Array.from(grid.children).map(el=>el.dataset.id),
+      sizes:JSON.parse(JSON.stringify(panelSizes))
+    };
+    try{
+      localStorage.setItem(FREEFORM_SAVE_KEY,JSON.stringify(snapshot));
+      flashButtonLabel(saveLayoutBtn,'Saved &#10003;');
+    }catch(e){
+      flashButtonLabel(saveLayoutBtn,'Could not save');
+    }
+  });
+}
+if(restoreLayoutBtn){
+  restoreLayoutBtn.addEventListener('click',()=>{
+    let snapshot=null;
+    try{snapshot=JSON.parse(localStorage.getItem(FREEFORM_SAVE_KEY)||'null');}catch(e){}
+    if(!snapshot||!snapshot.order){flashButtonLabel(restoreLayoutBtn,'No saved layout'); return;}
     const map={};
-    grid.querySelectorAll('.panel').forEach(p=>map[p.dataset.id]=p);
-    for(const id of order)if(map[id])grid.appendChild(map[id]);
-  }catch(e){}
+    Array.from(grid.children).forEach(el=>{map[el.dataset.id]=el;});
+    snapshot.order.forEach(id=>{if(map[id])grid.appendChild(map[id]);});
+    try{localStorage.setItem('loopbench-panel-order',JSON.stringify(snapshot.order));}catch(e){}
+    panelSizes=JSON.parse(JSON.stringify(snapshot.sizes||{}));
+    savePanelSizes();
+    if(layoutPresetSelect)layoutPresetSelect.value='free';
+    applyLayoutPreset('free');
+    redrawAll();
+    flashButtonLabel(restoreLayoutBtn,'Restored &#10003;');
+  });
 }
-restorePanelOrder();
+
+function updateCols(){
+  const w=grid.clientWidth;
+  const next=computeCols(w);
+  if(next!==cols){
+    cols=next;
+    grid.style.setProperty('--cols',cols);
+    relayout();
+    redrawAll();
+  }
+}
+grid.style.setProperty('--row-unit',ROW_UNIT+'px');
+grid.style.setProperty('--cols',cols);
+relayout();
+if(typeof ResizeObserver!=='undefined'){
+  new ResizeObserver(()=>updateCols()).observe(grid);
+}else{
+  window.addEventListener('resize',updateCols);
+}
+
+grid.querySelectorAll('.resize-handle').forEach(handle=>{
+  const panel=handle.closest('[data-id]');
+  let rs=null;
+  handle.addEventListener('pointerdown',(e)=>{
+    e.preventDefault();e.stopPropagation();
+    handle.setPointerCapture(e.pointerId);
+    const start=sizeFor(panel.dataset.id);
+    const colWidth=(grid.clientWidth-(cols-1)*COL_GAP)/cols;
+    rs={pointerId:e.pointerId,x0:e.clientX,y0:e.clientY,colWidth,colsAtStart:cols,
+        appliedStart:appliedColSpan(start.colSpan),r0:start.rowSpan};
+    panel.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove',(e)=>{
+    if(!rs||e.pointerId!==rs.pointerId)return;
+    // Drag feel is in units of the currently-rendered column width (so
+    // moving the pointer across one visible column always feels like "one
+    // step"), then converted back to the 6-baseline unit that's actually
+    // stored, so the size still makes sense if the window is later resized.
+    const dCol=Math.round((e.clientX-rs.x0)/rs.colWidth);
+    const dRow=Math.round((e.clientY-rs.y0)/ROW_UNIT);
+    const newApplied=Math.max(1,Math.min(rs.colsAtStart,rs.appliedStart+dCol));
+    const colSpan=Math.max(MIN_COLSPAN,Math.min(MAX_COLSPAN,Math.round(newApplied*BASELINE_COLS/rs.colsAtStart)));
+    const rowSpan=Math.max(MIN_ROWSPAN,Math.min(MAX_ROWSPAN,rs.r0+dRow));
+    panelSizes[panel.dataset.id]={colSpan,rowSpan};
+    applyPanelSize(panel);
+    renderOne(panel.dataset.id);
+  });
+  const endResize=(e)=>{
+    if(!rs||e.pointerId!==rs.pointerId)return;
+    rs=null;
+    panel.classList.remove('resizing');
+    try{handle.releasePointerCapture(e.pointerId);}catch(err){}
+    savePanelSizes();
+  };
+  handle.addEventListener('pointerup',endResize);
+  handle.addEventListener('pointercancel',endResize);
+  handle.addEventListener('dblclick',(e)=>{
+    e.preventDefault();e.stopPropagation();
+    delete panelSizes[panel.dataset.id];
+    applyPanelSize(panel);
+    savePanelSizes();
+    renderOne(panel.dataset.id);
+  });
+});
 
 /* ---- pan / zoom wiring ---- */
 attachRectZoomPan(document.getElementById('cvTime'),'time',{minXW:0.05,maxXW:1e6,minYW:1e-4,maxYW:1e9});

@@ -1,9 +1,10 @@
 # PID Control Loop Bench
 
 A single-page, client-side control-systems workbench: design a PID or arbitrary
-Laplace-domain compensator, run it against any plant transfer function, and see
-step/ramp/sine response, Bode magnitude/phase, Nyquist, root locus, and a
-pole-zero map update live — with pan/zoom and rearrangeable panels.
+Laplace-domain compensator, run it against any plant transfer function and any
+feedback path, and see step/ramp/sine response, Bode magnitude/phase, Nyquist,
+root locus, and a pole-zero map update live — with pan/zoom, rearrangeable
+panels, and one-click layout presets.
 
 Everything lives in **one HTML file** (`loop-bench.html`). There is no server,
 no build step, and no network dependency beyond loading the two Google Fonts
@@ -48,8 +49,10 @@ vanilla JavaScript in the `<script>` block, operating on plain arrays and
 - **Polynomials** — represented as plain arrays of real coefficients in
   descending power order. `polyAdd`, `polyScale`, `polyMul` (convolution),
   and `polyTrim` implement the algebra needed to multiply/add transfer
-  functions (e.g. forming the open-loop `L = C·P` and closed-loop
-  `T = L/(1+L)`).
+  functions: the forward path `G = C·P`, the loop gain `L = G·H`, and the
+  closed loop `Y/X = G/(1+GH)` (which numerically is `T.num = G.num·H.den`,
+  `T.den = G.den·H.den + G.num·H.num` — this collapses back to the familiar
+  `T = L/(1+L)` exactly when `H(s) = 1`).
 - **Laplace expression parser** — a small hand-written tokenizer plus a
   recursive-descent parser (grammar: expression → term → unary → power →
   atom) that turns text like `(s+1)/(s^2+2s+1)` directly into two polynomial
@@ -100,6 +103,95 @@ vanilla JavaScript in the `<script>` block, operating on plain arrays and
   sample on the root locus, the nearest simulated sample on the time plot,
   and either the nearest pole/zero or the raw cursor position in the
   s-plane on the pole-zero map.
+- **General (non-unity) feedback** — a fourth card, Feedback H(s), sits
+  alongside Controller C(s) and Process P(s), following the standard
+  block-diagram convention: input `X(s)` reaches a summing junction that
+  forms the error `Z(s) = X(s) − H(s)Y(s)`, which drives the forward path
+  `G(s) = C(s)·P(s)` to produce the output `Y(s)`. `H(s)` defaults to `1`
+  (plain unity feedback, the historical behavior of this tool) but accepts
+  any Laplace expression the Controller/Process fields do — a sensor gain,
+  a sensor lag, a washout filter, etc. Every plot follows that convention:
+  the Bode/Nyquist/root-locus panels show the *loop gain* `L(s) = G(s)H(s)`
+  (not just the forward path), and the pole-zero map and time response
+  reflect the true closed loop `Y(s)/X(s) = G(s)/(1+G(s)H(s))`.
+- **One unified, resizable, self-packing grid** — the Controller/Process/
+  Feedback/Test input cards and the six chart panels are all items of the
+  *same* CSS Grid,
+  up to 6 columns wide. Drag any card or panel by its header to reorder it
+  anywhere in that grid — a control card can be dropped below or between the
+  chart panels, and a chart panel can be pulled up above a control card,
+  since there's no longer a separate container keeping them apart. Drag a
+  bottom-right corner to resize an item (both width, in sixth-of-grid steps,
+  and height, continuously), or double-click the corner to reset it back to
+  its default size. The grid uses `grid-auto-flow: dense`, so shrinking one
+  item automatically lets a smaller item later in the layout backfill the
+  gap instead of leaving it blank — which also means a default-sized control
+  card can snap back to an earlier gap even after being dragged later in the
+  order; resizing the items around it is what actually keeps a gap from
+  opening up there. The number of columns actually on screen (1-6) is
+  recomputed from the grid's own rendered width via a `ResizeObserver`, so
+  it responds to window resizing *and* to browser zoom (which changes the
+  effective CSS-pixel width the same way). The page itself has no
+  max-width — it fills the full browser width (minus a small side gutter)
+  on any screen, so a wider monitor gets proportionally wider columns
+  rather than a fixed-width page centered in empty space. Each item's size
+  is stored as a
+  fraction of the 6-column baseline, not an absolute column count, so a
+  "half-width" panel stays roughly half-width if the window narrows enough
+  to drop to fewer columns, rather than snapping to full-width. A single
+  `makeReorderable()` helper drives the drag-handle-plus-arrow-button
+  reordering for all ten items, and both the shared order and each item's
+  size persist in `localStorage`. The status strip (closed-loop stability,
+  dominant pole, gain/phase margin) sits above the whole grid, right under
+  the page header, so it's visible without scrolling regardless of how the
+  cards or panels are rearranged.
+- **Layout presets** — a "Layout preset" dropdown above the grid offers three
+  named arrangements (Bode, Nyquist, Root Locus) on top of the default
+  free-form one. Each preset pins all four control cards (01 Controller, 02
+  Process, 03 Test input, 04 Feedback) to the right third of the grid,
+  stacked in that order, and pins the named diagram(s) — Bode magnitude +
+  phase stacked, or a single Nyquist or root-locus panel — across the left
+  two-thirds, on top. Unlike column width, row height here is never a fixed
+  number: applying a preset measures each control card's own `scrollHeight`
+  (how tall its fields and hint text actually render at the current column
+  width/zoom) and gives it exactly that many grid rows, with a short
+  verify-and-correct pass afterward in case the first measurement shifts
+  slightly once the box's own height changes (e.g. a scrollbar that was
+  needed against a placeholder-sized box is no longer needed once the box
+  is tall enough) — so every field is always visible with no internal
+  scrollbar, at any zoom level or window width. The diagram(s) on the left
+  are then stretched to that same total height, so the two columns still
+  tile the rectangle with no gap. The remaining chart panels are left with
+  no explicit placement at all, so `grid-auto-flow: dense` naturally flows
+  them into the next free cell, which happens to be the row right after
+  that pinned block — "everything else below" falls out of the grid
+  algorithm itself rather than being computed by hand. Pinned items hide
+  their resize handle (so a stray drag can't knock them out of the exact
+  rectangle the preset tiles), and the chosen preset persists in
+  `localStorage` just like panel order and size. Picking "Default
+  (free-form)" hands every item back to manual drag/resize.
+- **Explicit save/restore of the free-form layout** — the free-form drag
+  order and per-item sizes already autosave to `localStorage` continuously
+  as you go, so an ordinary reload remembers them. "Save layout" and
+  "Restore saved" (next to the layout preset dropdown) add a second,
+  explicit checkpoint on top of that: Save freezes a named snapshot of the
+  current order and sizes, and Restore brings that exact snapshot back
+  later — even after further dragging, resizing, or switching through the
+  Bode/Nyquist/Root Locus presets, none of which touch the underlying
+  order/size values, only how they're displayed while a preset is active.
+  Restoring also switches the "Layout preset" dropdown back to "Default
+  (free-form)" so the restored arrangement is immediately visible.
+- **Color themes** — a "Color theme" dropdown offers Auto (follows the OS
+  light/dark preference, the original behavior), explicit Light and Dark,
+  and four named palettes: Solarized Light, Solarized Dark, Nord, and
+  Dracula. Every theme is just a different set of CSS custom properties
+  (background, card surfaces, borders, text, accent, and the good/bad/warn
+  status colors) swapped in via a `data-theme` attribute on the root
+  element — the underlying markup and layout are identical across themes.
+  The choice persists in `localStorage`. This only re-themes the page
+  chrome: the six chart panels intentionally keep their own fixed dark
+  "scope" palette (see below) regardless of page theme, the same way a
+  real oscilloscope's screen doesn't change color with the room lighting.
 
 ## What's in the zip
 
